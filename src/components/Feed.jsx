@@ -1,118 +1,413 @@
 // components/Feed.jsx
-import { useEffect, useState } from "react";
-import { ref, push, onValue, update, remove, set, get } from "firebase/database";
+import { useEffect, useState, useRef, useCallback } from "react";
+import {
+  ref,
+  push,
+  onValue,
+  update,
+  remove,
+  set,
+  get,
+  query,
+  limitToFirst,
+  startAfter,
+  orderByChild,
+} from "firebase/database";
 import { db } from "../firebase";
-import { uploadToImgBB } from "../utils/uploadImage";
+import {
+  deleteFromS3,
+  uploadToS3,
+  uploadVideoToS3,
+} from "../utils/uploadToS3SDK";
 import {
   FaHeart,
   FaComment,
   FaTrash,
-  FaLock,
-  FaGlobe,
   FaImages,
   FaTimes,
   FaPencilAlt,
+  FaPlay,
+  FaPause,
+  FaVolumeUp,
+  FaVolumeMute,
+  FaChevronLeft,
+  FaChevronRight,
 } from "react-icons/fa";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 
 const Feed = ({ currentUser }) => {
+  // Estados existentes
   const [posts, setPosts] = useState([]);
   const [newPostContent, setNewPostContent] = useState("");
-  const [newPostImages, setNewPostImages] = useState([]);
+  const [newPostMedia, setNewPostMedia] = useState([]); // Unificado: {type, url, file}
   const [privacy, setPrivacy] = useState("public");
   const [uploading, setUploading] = useState(false);
   const [showCommentInput, setShowCommentInput] = useState(null);
   const [commentText, setCommentText] = useState("");
-  const [expandedImage, setExpandedImage] = useState(null);
-  const [showPostForm, setShowPostForm] = useState(false); // Nuevo estado para controlar el formulario en móvil
-
-  // Obtener amigos del backend
+  const [expandedMedia, setExpandedMedia] = useState(null);
+  const [showPostForm, setShowPostForm] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
+  const [currentUploadFile, setCurrentUploadFile] = useState(null);
   const [friendsIds, setFriendsIds] = useState([]);
 
-  // REEMPLAZA CON ESTE:
-useEffect(() => {
-  // Obtener lista de amigos desde Firebase
-  const fetchFriends = async () => {
-    const userRef = ref(db, `users/${currentUser.uid}/friends`);
-    const snapshot = await get(userRef);
-    const friendsObj = snapshot.val() || {};
-    setFriendsIds(Object.keys(friendsObj));
-  };
-  fetchFriends();
-}, [currentUser.uid]);
+  // Estados para scroll infinito
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [lastPostTimestamp, setLastPostTimestamp] = useState(null);
+  const [initialLoaded, setInitialLoaded] = useState(false);
+  const observerRef = useRef();
+  const lastPostRef = useRef();
 
-  // Escuchar posts en tiempo real
+  // Estados para carrusel
+  const [currentSlide, setCurrentSlide] = useState({});
+  // Agrega este estado junto a los otros
+  const [allPosts, setAllPosts] = useState([]);
+  const [visiblePosts, setVisiblePosts] = useState([]);
+  const [itemsPerPage, setItemsPerPage] = useState(5);
+
+  // Cargar posts iniciales (solo los primeros 5)
   useEffect(() => {
-    const postsRef = ref(db, "posts");
-    const unsubscribe = onValue(postsRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const postsList = Object.entries(data)
-          .map(([id, post]) => ({ id, ...post, likes: post.likes || {}, comments: post.comments || {} }))
-          .filter((post) => {
-            if (post.privacy === "public") return true;
-            if (post.privacy === "friends" && friendsIds.includes(post.userId))
-              return true;
-            if (post.userId === currentUser.uid) return true;
-            return false;
-          })
-          .sort((a, b) => b.timestamp - a.timestamp);
-        setPosts(postsList);
-      } else {
-        setPosts([]);
-      }
-    });
-    return () => unsubscribe();
+    if (!initialLoaded) {
+      loadInitialPosts();
+    }
   }, [friendsIds, currentUser.uid]);
 
-  const handleImageUpload = async (e) => {
-    const files = Array.from(e.target.files);
-    if (newPostImages.length + files.length > 10) {
-      alert("Máximo 10 imágenes por post");
-      return;
+  // Reemplaza loadInitialPosts con esta versión:
+  // Reemplaza la función loadInitialPosts con esta versión que convierte posts antiguos:
+  const loadInitialPosts = async () => {
+  setLoading(true);
+  try {
+    const postsRef = ref(db, "posts");
+    const snapshot = await get(postsRef);
+
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      const postsList = Object.entries(data)
+        .map(([id, post]) => {
+          let mediaArray = post.media || [];
+
+          if (post.images && post.images.length > 0) {
+            const imageMedia = post.images.map((url) => ({
+              type: "image",
+              url,
+            }));
+            mediaArray = [...imageMedia, ...mediaArray];
+          }
+
+          if (post.videos && post.videos.length > 0) {
+            const videoMedia = post.videos.map((url) => ({
+              type: "video",
+              url,
+            }));
+            mediaArray = [...mediaArray, ...videoMedia];
+          }
+
+          return {
+            id,
+            ...post,
+            media: mediaArray,
+            likes: post.likes || {},
+            comments: post.comments || {},
+          };
+        })
+        // 🔥 FILTRAR POSTS QUE CONTIENEN VIDEOS
+        .filter((post) => {
+          // Excluir posts que tienen videos
+          const hasVideo = post.media.some(m => m.type === 'video');
+          if (hasVideo) return false;
+          
+          if (post.privacy === "public") return true;
+          if (post.privacy === "friends" && friendsIds.includes(post.userId))
+            return true;
+          if (post.userId === currentUser.uid) return true;
+          return false;
+        })
+        .sort((a, b) => b.timestamp - a.timestamp);
+
+      const initialPosts = postsList.slice(0, 5);
+      setPosts(initialPosts);
+      setAllPosts(postsList);
+      setHasMore(postsList.length > 5);
+      setLastPostTimestamp(initialPosts[initialPosts.length - 1]?.timestamp);
+    } else {
+      setPosts([]);
+      setHasMore(false);
     }
-    setUploading(true);
-    const uploadedUrls = [];
-    for (const file of files) {
-      const url = await uploadToImgBB(file);
-      uploadedUrls.push(url);
-    }
-    setNewPostImages([...newPostImages, ...uploadedUrls]);
-    setUploading(false);
+  } catch (error) {
+    console.error("Error loading posts:", error);
+  } finally {
+    setLoading(false);
+    setInitialLoaded(true);
+  }
+};
+
+  // Reemplaza loadMorePosts con esta versión (EVITA DUPLICADOS):
+  const loadMorePosts = useCallback(() => {
+    if (loading || !hasMore) return;
+
+    setLoading(true);
+
+    // Simular carga para evitar duplicados
+    setTimeout(() => {
+      const currentCount = posts.length;
+      const nextPosts = allPosts.slice(currentCount, currentCount + 5);
+
+      if (nextPosts.length > 0) {
+        // Filtrar para asegurar que no hay duplicados
+        const existingIds = new Set(posts.map((p) => p.id));
+        const uniqueNewPosts = nextPosts.filter(
+          (post) => !existingIds.has(post.id),
+        );
+
+        setPosts((prev) => [...prev, ...uniqueNewPosts]);
+        setHasMore(currentCount + 5 < allPosts.length);
+      } else {
+        setHasMore(false);
+      }
+      setLoading(false);
+    }, 500);
+  }, [loading, hasMore, posts.length, allPosts]);
+
+  // Intersection Observer para scroll infinito
+  useEffect(() => {
+    if (!lastPostRef.current || !hasMore || loading) return;
+
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading) {
+          loadMorePosts();
+        }
+      },
+      { threshold: 0.5 },
+    );
+
+    observerRef.current.observe(lastPostRef.current);
+
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, [hasMore, loading, loadMorePosts, posts.length]);
+
+  // Navegación del carrusel
+  const nextSlide = (postId, total) => {
+    setCurrentSlide((prev) => ({
+      ...prev,
+      [postId]: ((prev[postId] || 0) + 1) % total,
+    }));
   };
 
-  const removeImage = (index) => {
-    setNewPostImages(newPostImages.filter((_, i) => i !== index));
+  const prevSlide = (postId, total) => {
+    setCurrentSlide((prev) => ({
+      ...prev,
+      [postId]: ((prev[postId] || 0) - 1 + total) % total,
+    }));
+  };
+
+  const handleMediaUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    const isVideo = files[0]?.type.startsWith("video/");
+
+    if (newPostMedia.length + files.length > 10) {
+      alert("Máximo 10 archivos por post");
+      return;
+    }
+
+    setUploading(true);
+    const uploadedMedia = [];
+
+    for (const file of files) {
+      setCurrentUploadFile(file.name);
+      try {
+        let url;
+        if (file.type.startsWith("video/")) {
+          if (file.size > 50 * 1024 * 1024) {
+            alert("El video no puede superar los 50MB");
+            continue;
+          }
+          url = await uploadVideoToS3(file, (progress) => {
+            setUploadProgress(progress);
+          });
+          uploadedMedia.push({ type: "video", url, file });
+        } else if (file.type.startsWith("image/")) {
+          url = await uploadToS3(file);
+          uploadedMedia.push({ type: "image", url, file });
+        }
+      } catch (error) {
+        console.error("Error subiendo:", error);
+        alert(`Error al subir ${file.name}`);
+      }
+    }
+
+    setNewPostMedia([...newPostMedia, ...uploadedMedia]);
+    setUploading(false);
+    setUploadProgress(null);
+    setCurrentUploadFile(null);
+  };
+
+  const removeMedia = (index) => {
+    setNewPostMedia(newPostMedia.filter((_, i) => i !== index));
   };
 
   const createPost = async () => {
-    if (!newPostContent.trim() && newPostImages.length === 0) return;
+    if (!newPostContent.trim() && newPostMedia.length === 0) return;
+
     const postData = {
       userId: currentUser.uid,
       userName: currentUser.name,
       userPhoto: currentUser.picture,
       content: newPostContent,
-      images: newPostImages,
+      media: newPostMedia.map((m) => ({ type: m.type, url: m.url })),
       privacy: privacy,
       timestamp: Date.now(),
       likes: {},
       comments: {},
     };
+
     const postsRef = ref(db, "posts");
     const newPostRef = push(postsRef);
     await set(newPostRef, postData);
-    // También guardar referencia en userPosts
     const userPostsRef = ref(
       db,
       `userPosts/${currentUser.uid}/${newPostRef.key}`,
     );
     await set(userPostsRef, true);
+
+    // Insertar nuevo post al inicio del feed
+    setPosts((prev) => [
+      {
+        id: newPostRef.key,
+        ...postData,
+      },
+      ...prev,
+    ]);
+
     setNewPostContent("");
-    setNewPostImages([]);
+    setNewPostMedia([]);
     setPrivacy("public");
+    setShowPostForm(false);
   };
 
+  // Componente Carrusel estilo Instagram
+  // Componente Carrusel con soporte táctil
+const Carousel = ({ media, postId }) => {
+  const total = media.length;
+  const current = currentSlide[postId] || 0;
+  const [touchStart, setTouchStart] = useState(0);
+  const [touchEnd, setTouchEnd] = useState(0);
+  const carouselRef = useRef(null);
+
+  const handleTouchStart = (e) => {
+    setTouchStart(e.touches[0].clientX);
+  };
+
+  const handleTouchMove = (e) => {
+    setTouchEnd(e.touches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStart - touchEnd > 50) {
+      // Swipe izquierda - siguiente
+      nextSlide(postId, total);
+    }
+    if (touchStart - touchEnd < -50) {
+      // Swipe derecha - anterior
+      prevSlide(postId, total);
+    }
+    setTouchStart(0);
+    setTouchEnd(0);
+  };
+
+  const nextSlide = (postId, total) => {
+    setCurrentSlide((prev) => ({
+      ...prev,
+      [postId]: ((prev[postId] || 0) + 1) % total,
+    }));
+  };
+
+  const prevSlide = (postId, total) => {
+    setCurrentSlide((prev) => ({
+      ...prev,
+      [postId]: ((prev[postId] || 0) - 1 + total) % total,
+    }));
+  };
+
+  const currentMedia = media[current];
+
+  if (total === 1) {
+    return (
+      <img
+        src={currentMedia.url}
+        alt="post"
+        className="w-full max-h-[500px] object-contain cursor-pointer"
+        onClick={() => setExpandedMedia(currentMedia.url)}
+      />
+    );
+  }
+
+  return (
+    <div 
+      ref={carouselRef}
+      className="relative"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      <div className="relative">
+        <img
+          src={currentMedia.url}
+          alt="post"
+          className="w-full max-h-[500px] object-contain cursor-pointer"
+          onClick={() => setExpandedMedia(currentMedia.url)}
+        />
+
+        {/* Indicadores de posición */}
+        <div className="absolute top-2 left-0 right-0 flex justify-center gap-1 z-10">
+          {media.map((_, idx) => (
+            <div
+              key={idx}
+              className={`h-1 rounded-full transition-all duration-300 ${
+                idx === current ? "bg-white w-6" : "bg-white/50 w-2"
+              }`}
+            />
+          ))}
+        </div>
+
+        {/* Botones de navegación desktop */}
+        {total > 1 && (
+          <>
+            <button
+              onClick={() => prevSlide(postId, total)}
+              className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 rounded-full p-2 text-white hover:bg-black/70 transition"
+            >
+              <FaChevronLeft size={24} />
+            </button>
+            <button
+              onClick={() => nextSlide(postId, total)}
+              className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 rounded-full p-2 text-white hover:bg-black/70 transition"
+            >
+              <FaChevronRight size={24} />
+            </button>
+          </>
+        )}
+
+        {/* Contador */}
+        <div className="absolute bottom-2 right-2 bg-black/50 rounded-full px-2 py-1 text-white text-xs">
+          {current + 1}/{total}
+        </div>
+        
+        {/* Indicador de swipe para móvil */}
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-white/50 text-xs md:hidden">
+          ← Desliza →
+        </div>
+      </div>
+    </div>
+  );
+};
+
+  // Resto de funciones (toggleLike, addComment, deletePost se mantienen igual)
   const toggleLike = async (postId, currentLikes) => {
     const likesObj = currentLikes || {};
     const likesRef = ref(db, `posts/${postId}/likes/${currentUser.uid}`);
@@ -140,128 +435,101 @@ useEffect(() => {
 
   const deletePost = async (postId) => {
     if (window.confirm("¿Eliminar este post?")) {
-      await remove(ref(db, `posts/${postId}`));
-      await remove(ref(db, `userPosts/${currentUser.uid}/${postId}`));
-    }
-  };
+      try {
+        const postRef = ref(db, `posts/${postId}`);
+        const postSnapshot = await get(postRef);
+        const post = postSnapshot.val();
 
-    // Función para resetear el formulario y cerrarlo
-  const closePostForm = () => {
-    setShowPostForm(false);
-    setNewPostContent("");
-    setNewPostImages([]);
-    setPrivacy("public");
-  };
+        if (post && post.media && post.media.length > 0) {
+          for (const media of post.media) {
+            try {
+              await deleteFromS3(media.url);
+            } catch (error) {
+              console.error("Error al eliminar media:", media.url, error);
+            }
+          }
+        }
 
-  // Componente para collage de imágenes
-  const ImageCollage = ({ images }) => {
-    const count = images.length;
-    if (count === 0) return null;
-    if (count === 1) {
-      return (
-        <img
-          src={images[0]}
-          alt="post"
-          className="w-full rounded-lg cursor-pointer"
-          onClick={() => setExpandedImage(images[0])}
-        />
-      );
+        await remove(ref(db, `posts/${postId}`));
+        await remove(ref(db, `userPosts/${currentUser.uid}/${postId}`));
+        setPosts((prev) => prev.filter((p) => p.id !== postId));
+      } catch (error) {
+        console.error("Error al eliminar post:", error);
+        alert("Error al eliminar el post: " + error.message);
+      }
     }
-    if (count === 2) {
-      return (
-        <div className="grid grid-cols-2 gap-1">
-          {images.map((img, idx) => (
-            <img
-              key={idx}
-              src={img}
-              alt="post"
-              className="w-full h-64 object-cover rounded-lg cursor-pointer"
-              onClick={() => setExpandedImage(img)}
-            />
-          ))}
-        </div>
-      );
-    }
-    if (count === 3) {
-      return (
-        <div className="grid grid-cols-2 gap-1">
-          <img
-            src={images[0]}
-            alt="post"
-            className="col-span-1 h-64 w-full object-cover rounded-lg cursor-pointer"
-            onClick={() => setExpandedImage(images[0])}
-          />
-          <div className="grid grid-rows-2 gap-1">
-            <img
-              src={images[1]}
-              alt="post"
-              className="h-32 w-full object-cover rounded-lg cursor-pointer"
-              onClick={() => setExpandedImage(images[1])}
-            />
-            <img
-              src={images[2]}
-              alt="post"
-              className="h-32 w-full object-cover rounded-lg cursor-pointer"
-              onClick={() => setExpandedImage(images[2])}
-            />
-          </div>
-        </div>
-      );
-    }
-    // 4+ imágenes: grid de 2x2
-    return (
-      <div className="grid grid-cols-2 gap-1">
-        {images.slice(0, 4).map((img, idx) => (
-          <img
-            key={idx}
-            src={img}
-            alt="post"
-            className="w-full h-48 object-cover rounded-lg cursor-pointer"
-            onClick={() => setExpandedImage(img)}
-          />
-        ))}
-        {images.length > 4 && (
-          <div
-            className="relative cursor-pointer"
-            onClick={() => setExpandedImage(images[4])}
-          >
-            <img
-              src={images[4]}
-              alt="post"
-              className="w-full h-48 object-cover rounded-lg"
-            />
-            <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-2xl font-bold rounded-lg">
-              +{images.length - 4}
-            </div>
-          </div>
-        )}
-      </div>
-    );
   };
 
   return (
     <div className="max-w-2xl mx-auto py-6 px-4">
-      {/* Modal para imagen expandida */}
-      {expandedImage && (
+      {/* Modal para media expandida */}
+      {expandedMedia && (
         <div
           className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center"
-          onClick={() => setExpandedImage(null)}
+          onClick={() => setExpandedMedia(null)}
         >
-          <img
-            src={expandedImage}
-            alt="expandida"
-            className="max-w-[90vw] max-h-[90vh] object-contain"
-          />
+          {expandedMedia.match(/\.(mp4|webm|ogg)$/) ? (
+            <video
+              src={expandedMedia}
+              controls
+              autoPlay
+              className="max-w-[90vw] max-h-[90vh]"
+            />
+          ) : (
+            <img
+              src={expandedMedia}
+              alt="expandida"
+              className="max-w-[90vw] max-h-[90vh] object-contain"
+            />
+          )}
           <button
             className="absolute top-4 right-4 text-white text-3xl"
-            onClick={() => setExpandedImage(null)}
+            onClick={() => setExpandedMedia(null)}
           >
             ✕
           </button>
         </div>
       )}
 
-       {/* Formulario para crear post - Desktop: siempre visible */}
+      {/* Indicador de progreso flotante */}
+      {uploading && uploadProgress !== null && (
+        <div className="fixed bottom-24 right-4 z-[100] bg-black/90 rounded-lg p-3 shadow-xl animate-slide-up min-w-[200px]">
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <div className="w-10 h-10 rounded-full border-2 border-gray-600">
+                <div
+                  className="absolute top-0 left-0 rounded-full border-t-2 border-blue-500"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    transform: `rotate(${uploadProgress * 3.6}deg)`,
+                  }}
+                />
+              </div>
+              <span className="absolute inset-0 flex items-center justify-center text-white text-xs font-bold">
+                {uploadProgress}%
+              </span>
+            </div>
+            <div className="flex-1">
+              <p className="text-white text-sm font-semibold">
+                Subiendo{" "}
+                {currentUploadFile?.includes("video") ? "video" : "imagen"}
+              </p>
+              <p className="text-gray-400 text-xs truncate max-w-[150px]">
+                {currentUploadFile}
+              </p>
+              <div className="w-full bg-gray-700 rounded-full h-1 mt-1">
+                <div
+                  className="bg-blue-500 h-1 rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Formulario para crear post - Desktop */}
       <div className="hidden md:block bg-[#242526] rounded-xl p-4 mb-6 shadow">
         <textarea
           value={newPostContent}
@@ -271,19 +539,31 @@ useEffect(() => {
           rows="3"
         />
         <div className="flex flex-wrap gap-2 mt-2">
-          {newPostImages.map((img, idx) => (
+          {newPostMedia.map((media, idx) => (
             <div key={idx} className="relative w-20 h-20">
-              <img
-                src={img}
-                alt="preview"
-                className="w-full h-full object-cover rounded"
-              />
+              {media.type === "video" ? (
+                <video
+                  src={media.url}
+                  className="w-full h-full object-cover rounded"
+                />
+              ) : (
+                <img
+                  src={media.url}
+                  alt="preview"
+                  className="w-full h-full object-cover rounded"
+                />
+              )}
               <button
-                onClick={() => removeImage(idx)}
+                onClick={() => removeMedia(idx)}
                 className="absolute -top-2 -right-2 bg-red-500 rounded-full p-1"
               >
                 <FaTimes className="w-3 h-3 text-white" />
               </button>
+              {media.type === "video" && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <FaPlay className="text-white text-xl opacity-75" />
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -294,8 +574,8 @@ useEffect(() => {
               <input
                 type="file"
                 multiple
-                accept="image/*"
-                onChange={handleImageUpload}
+                accept="image/*,video/*"
+                onChange={handleMediaUpload}
                 className="hidden"
                 disabled={uploading}
               />
@@ -318,96 +598,20 @@ useEffect(() => {
         </div>
       </div>
 
-      {/* Formulario para crear post - Móvil: Modal flotante */}
-      {showPostForm && (
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black/70 z-50 w-full h-full flex items-center justify-center md:hidden">
-          <div className="bg-[#242526] rounded-t-2xl w-full animate-slide-up">
-            <div className="flex justify-between items-center p-4 border-b border-[#3E4042]">
-              <h3 className="text-white font-semibold text-lg">Crear publicación</h3>
-              <button
-                onClick={closePostForm}
-                className="text-gray-400 hover:text-white"
-              >
-                <FaTimes className="text-xl" />
-              </button>
-            </div>
-            
-            <div className="p-4">
-              <textarea
-                value={newPostContent}
-                onChange={(e) => setNewPostContent(e.target.value)}
-                placeholder="¿Qué estás pensando?"
-                className="w-full bg-[#3A3B3C] text-white p-3 rounded-lg resize-none focus:outline-none"
-                rows="4"
-                autoFocus
-              />
-              
-              <div className="flex flex-wrap gap-2 mt-2">
-                {newPostImages.map((img, idx) => (
-                  <div key={idx} className="relative w-20 h-20">
-                    <img
-                      src={img}
-                      alt="preview"
-                      className="w-full h-full object-cover rounded"
-                    />
-                    <button
-                      onClick={() => removeImage(idx)}
-                      className="absolute -top-2 -right-2 bg-red-500 rounded-full p-1"
-                    >
-                      <FaTimes className="w-3 h-3 text-white" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              
-              <div className="flex justify-between items-center mt-4">
-                <div className="flex gap-2">
-                  <label className="bg-[#3A3B3C] p-2 rounded-full cursor-pointer">
-                    <FaImages className="text-[#2e9b4f] text-xl" />
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      className="hidden"
-                      disabled={uploading}
-                    />
-                  </label>
-                  <select
-                    value={privacy}
-                    onChange={(e) => setPrivacy(e.target.value)}
-                    className="bg-[#3A3B3C] text-white rounded-lg px-2 py-1 text-sm"
-                  >
-                    <option value="public">🌍 Público</option>
-                    <option value="friends">👥 Solo amigos</option>
-                  </select>
-                </div>
-                <button
-                  onClick={createPost}
-                  className="bg-[#2e9b4f] px-6 py-2 rounded-full font-semibold"
-                  disabled={!newPostContent.trim() && newPostImages.length === 0}
-                >
-                  Publicar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Botón flotante para móvil */}
       <button
         onClick={() => setShowPostForm(true)}
-        className="md:hidden fixed bottom-24 right-4 bg-[#2e9b4f] text-white p-4 rounded-full shadow-lg hover:bg-[#268e46] transition-all z-40 flex items-center justify-center"
+        className="md:hidden fixed bottom-24 right-4 bg-[#2e9b4f] text-white p-4 rounded-full shadow-lg hover:bg-[#268e46] transition-all z-40"
       >
         <FaPencilAlt className="text-xl" />
       </button>
 
-      {/* Feed de posts */}
+      {/* Feed con scroll infinito estilo Instagram */}
       <div className="space-y-6">
-        {posts.map((post) => (
+        {posts.map((post, index) => (
           <div
             key={post.id}
+            ref={index === posts.length - 1 ? lastPostRef : null}
             className="bg-[#242526] rounded-xl overflow-hidden shadow"
           >
             {/* Header del post */}
@@ -450,7 +654,11 @@ useEffect(() => {
 
             {/* Contenido */}
             <p className="px-4 pb-2 text-white">{post.content}</p>
-            {post.images?.length > 0 && <ImageCollage images={post.images} />}
+
+            {/* Carrusel estilo Instagram */}
+            {post.media?.length > 0 && (
+              <Carousel media={post.media} postId={post.id} />
+            )}
 
             {/* Botones de acción */}
             <div className="flex items-center justify-around p-2 border-t border-[#3E4042] mt-2">
@@ -536,7 +744,21 @@ useEffect(() => {
             )}
           </div>
         ))}
-        {posts.length === 0 && (
+
+        {/* Loader de carga */}
+        {loading && (
+          <div className="flex justify-center py-4">
+            <div className="w-8 h-8 border-4 border-[#2e9b4f] border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+
+        {!hasMore && posts.length > 0 && (
+          <div className="text-center py-4 text-gray-400 text-sm">
+            No hay más publicaciones
+          </div>
+        )}
+
+        {posts.length === 0 && !loading && (
           <div className="text-center py-12 text-gray-400">
             <p>No hay publicaciones aún</p>
             <p className="text-sm mt-2">Sé el primero en publicar algo</p>

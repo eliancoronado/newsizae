@@ -11,7 +11,7 @@ import { FaVideo } from "react-icons/fa";
 const BottomBar = ({ activeTab, setActiveTab, totalUnread = 0 }) => {
   const navItems = [
     { id: "home", icon: GoHomeFill, label: "Inicio" },
-    { id: "reels", icon: FaDiagramProject , label: "Proyectos" },
+    { id: "reels", icon: FaVideo , label: "Videos" },
     { id: "messages", icon: BiMessageDetail, label: "Mensajes" },
     { id: "community", icon: RiUserCommunityFill, label: "Comunidad" },
   ];

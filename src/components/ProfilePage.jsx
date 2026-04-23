@@ -14,6 +14,7 @@ import {
   FaTrash,
 } from "react-icons/fa";
 import { uploadToImgBB } from "../utils/uploadImage";
+import { uploadToS3 } from "../utils/uploadToS3SDK"; // o uploadToS3SDK
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../firebase";
 import { ref, onValue, push, set, remove, update } from "firebase/database";
@@ -472,7 +473,7 @@ export default function ProfilePage() {
     if (!file) return;
     setUploadingCover(true);
     try {
-      const imageUrl = await uploadToImgBB(file);
+      const imageUrl = await uploadToS3(file);
       const currentUser = getCurrentUser();
       if (!currentUser) throw new Error("No autenticado");
       await updateProfile(currentUser.uid, { coverPhoto: imageUrl });

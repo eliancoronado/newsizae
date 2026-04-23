@@ -23,6 +23,7 @@ import ReelUploader from "./components/ReelUploader";
 import { useNotifications } from "./hooks/useNotifications";
 import NotificationToast from "./components/NotificationToast";
 import ProjectsPage from "./components/ProjectsPage";
+import Video from "./components/Video";
 
 // 🎨 Componente Skeleton para los amigos (lista horizontal)
 const FriendsSkeleton = () => (
@@ -500,7 +501,7 @@ export default function Dashboard() {
             <Feed currentUser={user} />
           </div>
         )}
-        {activeTab === "reels" && <ProjectsPage currentUser={user} />}
+        {activeTab === "reels" && <Video currentUser={user} />}
         {activeTab === "community" && <FriendsManager user={user} />}
         {activeTab === "messages" && <Chat currentUser={user} />}
 

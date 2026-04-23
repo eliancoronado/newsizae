@@ -1,5 +1,5 @@
 // Login.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { FcGoogle } from "react-icons/fc";
 import { auth, provider, db } from "../firebase";
 import { signInWithPopup } from "firebase/auth";
@@ -10,6 +10,15 @@ const Login = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+      navigate("/dashboard");
+    }
+  }, []);
+
 
   async function loginWithGoogle() {
     setLoading(true);

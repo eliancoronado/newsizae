@@ -2,6 +2,7 @@
 import { ref, push, set, update, remove, onValue, get } from "firebase/database";
 import { db } from "../firebase";
 import { uploadToImgBB } from "./uploadImage";
+import { uploadToS3 } from "./uploadToS3SDK";
 
 // Obtener datos de un usuario desde Firebase (sin backend)
 export const getUserInfo = async (userId) => {
@@ -41,7 +42,7 @@ export const addStory = async (userId, imageFile, text = "") => {
     if (imageFile) {
       // 🔥 Asegurar que sea un archivo válido
       if (imageFile instanceof File || imageFile instanceof Blob) {
-        imageUrl = await uploadToImgBB(imageFile);
+        imageUrl = await uploadToS3(imageFile);
       } else {
         console.error("Invalid file type:", imageFile);
         throw new Error("El archivo no es válido");
