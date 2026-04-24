@@ -24,6 +24,7 @@ import { useNotifications } from "./hooks/useNotifications";
 import NotificationToast from "./components/NotificationToast";
 import ProjectsPage from "./components/ProjectsPage";
 import Video from "./components/Video";
+import { FaCodeBranch, FaFacebookMessenger } from "react-icons/fa6";
 
 // 🎨 Componente Skeleton para los amigos (lista horizontal)
 const FriendsSkeleton = () => (
@@ -345,7 +346,7 @@ export default function Dashboard() {
         />
       )}
 
-      <div className="h-full w-full md:w-auto md:flex-1">
+      <div className="h-[calc(100vh-7vh)] w-full md:w-auto md:flex-1">
         {activeTab === "home" && (
           <div className="flex-1 h-full max-h-full overflow-y-auto bg-[#121212] pb-20 md:pb-0">
             {/* Header Responsive */}
@@ -380,26 +381,35 @@ export default function Dashboard() {
                   </div>
                   <img
                     src={user?.picture}
-                    className="rounded-full h-8 w-8 md:h-2/3 md:w-auto object-cover"
+                    className="hidden lg:block rounded-full h-9 w-9 md:h-2/3 md:w-auto object-cover"
                     alt=""
                   />
+                </div>
+                <div className="gap-2 flex items-center">
+                  <button
+                    onClick={() => setActiveTab("messages")}
+                    className={`flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-xl transition-all relative border-2 border-white`}
+                  >
+                    <FaFacebookMessenger className="text-2xl text-white" />
+                    {totalUnread > 0 && (
+                      <span className="absolute -top-1 -right-2 bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                        {totalUnread > 99 ? "99+" : totalUnread}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("projects")}
+                    className={`flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-xl transition-all relative border-2 border-white`}
+                  >
+                    <FaCodeBranch className="text-2xl text-white" />
+                  </button>
                 </div>
               </div>
             </div>
 
-            {/* Botón para agregar historia - Responsive */}
-            <div className="px-3 md:px-4 mt-2">
-              <button
-                onClick={() => setShowStoryUploader(true)}
-                className="bg-[#2e9b4f] text-white px-3 md:px-4 py-1.5 md:py-2 rounded-full text-xs md:text-sm font-semibold hover:bg-[#268e46] transition w-full sm:w-auto"
-              >
-                + Agregar historia
-              </button>
-            </div>
-
             {/* Stories Section - Responsive */}
-            <div className="w-full h-auto mt-3 py-1">
-              <div className="w-full h-auto mt-3 py-1 flex items-center px-3 md:px-4 gap-2 md:gap-3 overflow-x-auto scrollbar-hide">
+            <div className="w-full h-auto">
+              <div className="w-full h-auto flex items-center px-3 md:px-4 gap-2 md:gap-3 overflow-x-auto scrollbar-hide">
                 {/* MI ESTADO - Siempre primero */}
                 <div
                   className="flex flex-col items-center hover:bg-[#393939]/60 hover:backdrop-blur-md transition-all rounded-xl cursor-pointer p-2 md:p-3 min-w-[70px] md:min-w-[90px] flex-shrink-0"
@@ -433,6 +443,15 @@ export default function Dashboard() {
                   <p className="text-[12px] md:text-[12px] text-gray-400 text-center">
                     {myStoryStatus.hasStories ? "Ver historia" : "Agregar"}
                   </p>
+                </div>
+
+                <div className="px-3 md:px-4">
+                  <button
+                    onClick={() => setShowStoryUploader(true)}
+                    className="border-2 border-white text-white px-3 md:px-4 py-2 md:py-2 text-xs md:text-sm font-semibold w-full sm:w-auto flex flex-col items-center hover:bg-[#393939]/60 hover:backdrop-blur-md transition-all rounded-xl cursor-pointer p-2 md:p-3 min-w-[70px] md:min-w-[90px] flex-shrink-0"
+                  >
+                    + Agregar historia
+                  </button>
                 </div>
 
                 {/* Separador visual */}
@@ -502,16 +521,18 @@ export default function Dashboard() {
           </div>
         )}
         {activeTab === "reels" && <Video currentUser={user} />}
+        {activeTab === "projects" && <ProjectsPage currentUser={user} />}
         {activeTab === "community" && <FriendsManager user={user} />}
         {activeTab === "messages" && <Chat currentUser={user} />}
 
         {/* BottomBar - Solo visible en móvil */}
-        <BottomBar
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          totalUnread={totalUnread}
-        />
       </div>
+      <BottomBar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        totalUnread={totalUnread}
+        user={user}
+      />
       {showReelUploader && (
         <ReelUploader
           currentUser={user}

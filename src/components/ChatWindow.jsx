@@ -6,9 +6,12 @@ import { usePresence } from "../hooks/usePresence";
 import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
 import { Link } from "react-router-dom";
 import { FaArrowLeft, FaPhone, FaVideo, FaEllipsisV } from "react-icons/fa";
-import { FaSpinner } from "react-icons/fa6";
+import { FaSpinner, FaVideoSlash } from "react-icons/fa6";
 import { getAuth } from "firebase/auth"; // 👈 AGREGAR
 import { sendPushNotification } from "../utils/notifications";
+import LlamadaUI from "./LlamadaUI";
+import { useWebRTC } from "../hooks/useWebRTC";
+import LlamadaEntrante from "./LlamadaEntrante";
 
 // Altura del BottomBar (debe coincidir con el espaciador que agregaste)
 const BOTTOM_BAR_HEIGHT = 0;
@@ -36,6 +39,61 @@ export default function ChatWindow({
   // Detectar altura del teclado
   const keyboardHeight = useKeyboardHeight();
   const { status, statusText } = usePresence(friendId);
+  const [showCallPanel, setShowCallPanel] = useState(false);
+  const {
+    iniciarLlamada,
+    aceptarLlamada,
+    colgarLlamada,
+    enLlamada,
+    llamando,
+    llamadaEntrante,
+    remoteStream,
+  } = useWebRTC(currentUser.uid, friendId, () => {
+    setShowCallPanel(false);
+  });
+  const audioRef = useRef();
+
+  useEffect(() => {
+    if (audioRef.current && remoteStream) {
+      audioRef.current.srcObject = remoteStream;
+      audioRef.current.play().catch((e) => console.log("play blocked", e));
+    }
+  }, [remoteStream]);
+
+  // Agrega esto después de las declaraciones de estado
+  useEffect(() => {
+    // Limpiar el estado de llamada cuando cambia el amigo
+    return () => {
+      if (llamadaEntrante) {
+        console.log("🧹 Limpiando llamadaEntrante al cambiar de chat");
+        // No podemos llamar a setLlamadaEntrante directamente porque está en el hook
+      }
+    };
+  }, [friendId]);
+
+  // Llamar a iniciarLlamada con el nombre
+  // Dentro de ChatWindow.jsx, después de useWebRTC
+  const handleIniciarLlamada = () => {
+    const auth = getAuth();
+    if (!auth.currentUser) {
+      alert("Debes estar autenticado para llamar");
+      return;
+    }
+
+    if (!currentUser?.uid) {
+      alert("Error: No se pudo identificar al usuario");
+      return;
+    }
+
+    if (!friendId) {
+      alert("Error: No se pudo identificar al destinatario");
+      return;
+    }
+
+    console.log("📞 Iniciando llamada desde:", currentUser.uid, "a:", friendId);
+    iniciarLlamada(currentUser.name);
+    setShowCallPanel(false);
+  };
 
   const handleTyping = () => {
     if (!friendId) return;
@@ -51,10 +109,10 @@ export default function ChatWindow({
   };
 
   // 🔥 AGREGAR EL PROJECT_ID DE TU FIREBASE
-const PROJECT_ID = "sizaenew"; // Reemplaza con tu project ID de Firebase
+  const PROJECT_ID = "sizaenew"; // Reemplaza con tu project ID de Firebase
 
-// 🔥 AGREGAR LA FUNCIÓN sendPushNotification DENTRO DEL COMPONENTE
-// o importarla desde otro archivo. Por simplicidad, la definimos dentro:
+  // 🔥 AGREGAR LA FUNCIÓN sendPushNotification DENTRO DEL COMPONENTE
+  // o importarla desde otro archivo. Por simplicidad, la definimos dentro:
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -232,7 +290,12 @@ const PROJECT_ID = "sizaenew"; // Reemplaza con tu project ID de Firebase
         `userChats/${friendId}/${currentUser.uid}/typing`,
       );
       await set(typingRef, false);
-      await sendPushNotification(friendId, currentUser.name, messageToSend, currentUser.picture);
+      await sendPushNotification(
+        friendId,
+        currentUser.name,
+        messageToSend,
+        currentUser.picture,
+      );
 
       inputRef.current?.focus();
     } catch (error) {
@@ -270,6 +333,7 @@ const PROJECT_ID = "sizaenew"; // Reemplaza con tu project ID de Firebase
 
   return (
     <div className="h-full flex flex-col bg-[#18191A] pb-[70px]">
+      <audio ref={audioRef} autoPlay playsInline muted={false} />
       {/* Header fijo */}
       <div className="flex-shrink-0 flex items-center gap-3 p-3 border-b border-[#3E4042] bg-[#242526]">
         {isMobile && (
@@ -313,8 +377,25 @@ const PROJECT_ID = "sizaenew"; // Reemplaza con tu project ID de Firebase
             </p>
           </div>
         </Link>
-      </div>
+        {/* Indicador de llamada activa */}
+        {(enLlamada || llamando) && (
+          <div className="absolute top-0 right-0 mt-1 mr-1">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-ping"></div>
+          </div>
+        )}
 
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleIniciarLlamada}
+            className="p-2 hover:bg-[#3A3B3C] rounded-full transition-colors"
+            disabled={enLlamada} // No permitir llamar si ya están en llamada
+          >
+            <FaPhone
+              className={`text-lg ${enLlamada ? "text-green-500" : "text-[#2e9b4f]"}`}
+            />
+          </button>
+        </div>
+      </div>
       {/* Mensajes - scrollable */}
       <div
         className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-hide"
@@ -378,7 +459,6 @@ const PROJECT_ID = "sizaenew"; // Reemplaza con tu project ID de Firebase
         )}
         <div ref={messagesEndRef} />
       </div>
-
       {/* Input de mensaje - fijo al final, pero con padding dinámico ya aplicado al contenedor padre */}
       <div
         className="flex-shrink-0 p-3 border-t border-[#3E4042] bg-[#242526]"
@@ -408,6 +488,58 @@ const PROJECT_ID = "sizaenew"; // Reemplaza con tu project ID de Firebase
           </button>
         </form>
       </div>
+      {/* Modal de llamada entrante */}
+      {/* Modal de llamada entrante - COMENTADO TEMPORALMENTE */}
+      <LlamadaEntrante
+        llamadaEntrante={llamadaEntrante}
+        onAceptar={aceptarLlamada}
+        onRechazar={colgarLlamada}
+        nombreCreador={llamadaEntrante?.creadorNombre || ""}
+      />
+      {/* Panel de llamada saliente */}
+      {showCallPanel && !enLlamada && !llamando && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+          <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-80">
+            <div className="text-center mb-4">
+              <h3 className="text-white text-xl">Llamar a {friendName}</h3>
+            </div>
+            <div className="flex gap-4">
+              <button
+                onClick={handleIniciarLlamada}
+                className="bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-full flex-1"
+              >
+                Llamar
+              </button>
+              <button
+                onClick={() => setShowCallPanel(false)}
+                className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-full flex-1"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {(llamando || enLlamada) && (
+        <div className="fixed bottom-24 left-0 right-0 mx-auto w-64 bg-gray-900 rounded-lg shadow-xl p-3 z-40">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div
+                className={`w-2 h-2 rounded-full animate-pulse ${enLlamada ? "bg-green-500" : "bg-yellow-500"}`}
+              ></div>
+              <span className="text-white text-sm">
+                {enLlamada ? "📞 En llamada" : llamando ? "🔔 Llamando..." : ""}
+              </span>
+            </div>
+            <button
+              onClick={colgarLlamada}
+              className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-full text-sm"
+            >
+              Colgar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

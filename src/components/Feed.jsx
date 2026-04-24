@@ -27,11 +27,11 @@ import {
   FaTimes,
   FaPencilAlt,
   FaPlay,
-  FaPause,
   FaVolumeUp,
   FaVolumeMute,
   FaChevronLeft,
   FaChevronRight,
+  FaVideo,
 } from "react-icons/fa";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
@@ -40,7 +40,7 @@ const Feed = ({ currentUser }) => {
   // Estados existentes
   const [posts, setPosts] = useState([]);
   const [newPostContent, setNewPostContent] = useState("");
-  const [newPostMedia, setNewPostMedia] = useState([]); // Unificado: {type, url, file}
+  const [newPostMedia, setNewPostMedia] = useState([]);
   const [privacy, setPrivacy] = useState("public");
   const [uploading, setUploading] = useState(false);
   const [showCommentInput, setShowCommentInput] = useState(null);
@@ -50,6 +50,7 @@ const Feed = ({ currentUser }) => {
   const [uploadProgress, setUploadProgress] = useState(null);
   const [currentUploadFile, setCurrentUploadFile] = useState(null);
   const [friendsIds, setFriendsIds] = useState([]);
+  const [uploadType, setUploadType] = useState(null); // 'image' o 'video'
 
   // Estados para scroll infinito
   const [loading, setLoading] = useState(false);
@@ -61,105 +62,104 @@ const Feed = ({ currentUser }) => {
 
   // Estados para carrusel
   const [currentSlide, setCurrentSlide] = useState({});
-  // Agrega este estado junto a los otros
   const [allPosts, setAllPosts] = useState([]);
-  const [visiblePosts, setVisiblePosts] = useState([]);
-  const [itemsPerPage, setItemsPerPage] = useState(5);
 
-  // Cargar posts iniciales (solo los primeros 5)
+  // Cargar amigos
+  useEffect(() => {
+    const fetchFriends = async () => {
+      const userRef = ref(db, `users/${currentUser.uid}/friends`);
+      const snapshot = await get(userRef);
+      const friendsObj = snapshot.val() || {};
+      setFriendsIds(Object.keys(friendsObj));
+    };
+    fetchFriends();
+  }, [currentUser.uid]);
+
+  // Cargar posts iniciales
   useEffect(() => {
     if (!initialLoaded) {
       loadInitialPosts();
     }
   }, [friendsIds, currentUser.uid]);
 
-  // Reemplaza loadInitialPosts con esta versión:
-  // Reemplaza la función loadInitialPosts con esta versión que convierte posts antiguos:
   const loadInitialPosts = async () => {
-  setLoading(true);
-  try {
-    const postsRef = ref(db, "posts");
-    const snapshot = await get(postsRef);
+    setLoading(true);
+    try {
+      const postsRef = ref(db, "posts");
+      const snapshot = await get(postsRef);
 
-    if (snapshot.exists()) {
-      const data = snapshot.val();
-      const postsList = Object.entries(data)
-        .map(([id, post]) => {
-          let mediaArray = post.media || [];
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const postsList = Object.entries(data)
+          .map(([id, post]) => {
+            let mediaArray = post.media || [];
 
-          if (post.images && post.images.length > 0) {
-            const imageMedia = post.images.map((url) => ({
-              type: "image",
-              url,
-            }));
-            mediaArray = [...imageMedia, ...mediaArray];
-          }
+            if (post.images && post.images.length > 0) {
+              const imageMedia = post.images.map((url) => ({
+                type: "image",
+                url,
+              }));
+              mediaArray = [...imageMedia, ...mediaArray];
+            }
 
-          if (post.videos && post.videos.length > 0) {
-            const videoMedia = post.videos.map((url) => ({
-              type: "video",
-              url,
-            }));
-            mediaArray = [...mediaArray, ...videoMedia];
-          }
+            if (post.videos && post.videos.length > 0) {
+              const videoMedia = post.videos.map((url) => ({
+                type: "video",
+                url,
+              }));
+              mediaArray = [...mediaArray, ...videoMedia];
+            }
 
-          return {
-            id,
-            ...post,
-            media: mediaArray,
-            likes: post.likes || {},
-            comments: post.comments || {},
-          };
-        })
-        // 🔥 FILTRAR POSTS QUE CONTIENEN VIDEOS
-        .filter((post) => {
-          // Excluir posts que tienen videos
-          const hasVideo = post.media.some(m => m.type === 'video');
-          if (hasVideo) return false;
-          
-          if (post.privacy === "public") return true;
-          if (post.privacy === "friends" && friendsIds.includes(post.userId))
-            return true;
-          if (post.userId === currentUser.uid) return true;
-          return false;
-        })
-        .sort((a, b) => b.timestamp - a.timestamp);
+            return {
+              id,
+              ...post,
+              media: mediaArray,
+              likes: post.likes || {},
+              comments: post.comments || {},
+            };
+          })
+          .filter((post) => {
+            const hasVideo = post.media.some((m) => m.type === "video");
+            if (hasVideo) return false;
 
-      const initialPosts = postsList.slice(0, 5);
-      setPosts(initialPosts);
-      setAllPosts(postsList);
-      setHasMore(postsList.length > 5);
-      setLastPostTimestamp(initialPosts[initialPosts.length - 1]?.timestamp);
-    } else {
-      setPosts([]);
-      setHasMore(false);
+            if (post.privacy === "public") return true;
+            if (post.privacy === "friends" && friendsIds.includes(post.userId))
+              return true;
+            if (post.userId === currentUser.uid) return true;
+            return false;
+          })
+          .sort((a, b) => b.timestamp - a.timestamp);
+
+        const initialPosts = postsList.slice(0, 5);
+        setPosts(initialPosts);
+        setAllPosts(postsList);
+        setHasMore(postsList.length > 5);
+        setLastPostTimestamp(initialPosts[initialPosts.length - 1]?.timestamp);
+      } else {
+        setPosts([]);
+        setHasMore(false);
+      }
+    } catch (error) {
+      console.error("Error loading posts:", error);
+    } finally {
+      setLoading(false);
+      setInitialLoaded(true);
     }
-  } catch (error) {
-    console.error("Error loading posts:", error);
-  } finally {
-    setLoading(false);
-    setInitialLoaded(true);
-  }
-};
+  };
 
-  // Reemplaza loadMorePosts con esta versión (EVITA DUPLICADOS):
   const loadMorePosts = useCallback(() => {
     if (loading || !hasMore) return;
 
     setLoading(true);
-
-    // Simular carga para evitar duplicados
     setTimeout(() => {
       const currentCount = posts.length;
       const nextPosts = allPosts.slice(currentCount, currentCount + 5);
 
       if (nextPosts.length > 0) {
-        // Filtrar para asegurar que no hay duplicados
         const existingIds = new Set(posts.map((p) => p.id));
         const uniqueNewPosts = nextPosts.filter(
           (post) => !existingIds.has(post.id),
         );
-
         setPosts((prev) => [...prev, ...uniqueNewPosts]);
         setHasMore(currentCount + 5 < allPosts.length);
       } else {
@@ -191,7 +191,6 @@ const Feed = ({ currentUser }) => {
     };
   }, [hasMore, loading, loadMorePosts, posts.length]);
 
-  // Navegación del carrusel
   const nextSlide = (postId, total) => {
     setCurrentSlide((prev) => ({
       ...prev,
@@ -208,7 +207,6 @@ const Feed = ({ currentUser }) => {
 
   const handleMediaUpload = async (e) => {
     const files = Array.from(e.target.files);
-    const isVideo = files[0]?.type.startsWith("video/");
 
     if (newPostMedia.length + files.length > 10) {
       alert("Máximo 10 archivos por post");
@@ -227,12 +225,19 @@ const Feed = ({ currentUser }) => {
             alert("El video no puede superar los 50MB");
             continue;
           }
+          setUploadType("video");
           url = await uploadVideoToS3(file, (progress) => {
             setUploadProgress(progress);
           });
           uploadedMedia.push({ type: "video", url, file });
         } else if (file.type.startsWith("image/")) {
+          setUploadType("image");
           url = await uploadToS3(file);
+          // Simular progreso para imágenes
+          for (let i = 0; i <= 100; i += 20) {
+            setUploadProgress(i);
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
           uploadedMedia.push({ type: "image", url, file });
         }
       } catch (error) {
@@ -245,6 +250,7 @@ const Feed = ({ currentUser }) => {
     setUploading(false);
     setUploadProgress(null);
     setCurrentUploadFile(null);
+    setUploadType(null);
   };
 
   const removeMedia = (index) => {
@@ -275,7 +281,6 @@ const Feed = ({ currentUser }) => {
     );
     await set(userPostsRef, true);
 
-    // Insertar nuevo post al inicio del feed
     setPosts((prev) => [
       {
         id: newPostRef.key,
@@ -290,124 +295,99 @@ const Feed = ({ currentUser }) => {
     setShowPostForm(false);
   };
 
-  // Componente Carrusel estilo Instagram
-  // Componente Carrusel con soporte táctil
-const Carousel = ({ media, postId }) => {
-  const total = media.length;
-  const current = currentSlide[postId] || 0;
-  const [touchStart, setTouchStart] = useState(0);
-  const [touchEnd, setTouchEnd] = useState(0);
-  const carouselRef = useRef(null);
+  const Carousel = ({ media, postId }) => {
+    const total = media.length;
+    const current = currentSlide[postId] || 0;
+    const [touchStart, setTouchStart] = useState(0);
+    const [touchEnd, setTouchEnd] = useState(0);
 
-  const handleTouchStart = (e) => {
-    setTouchStart(e.touches[0].clientX);
-  };
+    const handleTouchStart = (e) => {
+      setTouchStart(e.touches[0].clientX);
+    };
 
-  const handleTouchMove = (e) => {
-    setTouchEnd(e.touches[0].clientX);
-  };
+    const handleTouchMove = (e) => {
+      setTouchEnd(e.touches[0].clientX);
+    };
 
-  const handleTouchEnd = () => {
-    if (touchStart - touchEnd > 50) {
-      // Swipe izquierda - siguiente
-      nextSlide(postId, total);
-    }
-    if (touchStart - touchEnd < -50) {
-      // Swipe derecha - anterior
-      prevSlide(postId, total);
-    }
-    setTouchStart(0);
-    setTouchEnd(0);
-  };
+    const handleTouchEnd = () => {
+      if (touchStart - touchEnd > 50) {
+        nextSlide(postId, total);
+      }
+      if (touchStart - touchEnd < -50) {
+        prevSlide(postId, total);
+      }
+      setTouchStart(0);
+      setTouchEnd(0);
+    };
 
-  const nextSlide = (postId, total) => {
-    setCurrentSlide((prev) => ({
-      ...prev,
-      [postId]: ((prev[postId] || 0) + 1) % total,
-    }));
-  };
+    const currentMedia = media[current];
 
-  const prevSlide = (postId, total) => {
-    setCurrentSlide((prev) => ({
-      ...prev,
-      [postId]: ((prev[postId] || 0) - 1 + total) % total,
-    }));
-  };
-
-  const currentMedia = media[current];
-
-  if (total === 1) {
-    return (
-      <img
-        src={currentMedia.url}
-        alt="post"
-        className="w-full max-h-[500px] object-contain cursor-pointer"
-        onClick={() => setExpandedMedia(currentMedia.url)}
-      />
-    );
-  }
-
-  return (
-    <div 
-      ref={carouselRef}
-      className="relative"
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-    >
-      <div className="relative">
+    if (total === 1) {
+      return (
         <img
           src={currentMedia.url}
           alt="post"
           className="w-full max-h-[500px] object-contain cursor-pointer"
           onClick={() => setExpandedMedia(currentMedia.url)}
         />
+      );
+    }
 
-        {/* Indicadores de posición */}
-        <div className="absolute top-2 left-0 right-0 flex justify-center gap-1 z-10">
-          {media.map((_, idx) => (
-            <div
-              key={idx}
-              className={`h-1 rounded-full transition-all duration-300 ${
-                idx === current ? "bg-white w-6" : "bg-white/50 w-2"
-              }`}
-            />
-          ))}
-        </div>
+    return (
+      <div
+        className="relative"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        <div className="relative">
+          <img
+            src={currentMedia.url}
+            alt="post"
+            className="w-full max-h-[500px] object-contain cursor-pointer"
+            onClick={() => setExpandedMedia(currentMedia.url)}
+          />
 
-        {/* Botones de navegación desktop */}
-        {total > 1 && (
-          <>
-            <button
-              onClick={() => prevSlide(postId, total)}
-              className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 rounded-full p-2 text-white hover:bg-black/70 transition"
-            >
-              <FaChevronLeft size={24} />
-            </button>
-            <button
-              onClick={() => nextSlide(postId, total)}
-              className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 rounded-full p-2 text-white hover:bg-black/70 transition"
-            >
-              <FaChevronRight size={24} />
-            </button>
-          </>
-        )}
+          <div className="absolute top-2 left-0 right-0 flex justify-center gap-1 z-10">
+            {media.map((_, idx) => (
+              <div
+                key={idx}
+                className={`h-1 rounded-full transition-all duration-300 ${
+                  idx === current ? "bg-white w-6" : "bg-white/50 w-2"
+                }`}
+              />
+            ))}
+          </div>
 
-        {/* Contador */}
-        <div className="absolute bottom-2 right-2 bg-black/50 rounded-full px-2 py-1 text-white text-xs">
-          {current + 1}/{total}
-        </div>
-        
-        {/* Indicador de swipe para móvil */}
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-white/50 text-xs md:hidden">
-          ← Desliza →
+          {total > 1 && (
+            <>
+              <button
+                onClick={() => prevSlide(postId, total)}
+                className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 rounded-full p-2 text-white hover:bg-black/70 transition"
+              >
+                <FaChevronLeft size={24} />
+              </button>
+              <button
+                onClick={() => nextSlide(postId, total)}
+                className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 rounded-full p-2 text-white hover:bg-black/70 transition"
+              >
+                <FaChevronRight size={24} />
+              </button>
+            </>
+          )}
+
+          <div className="absolute bottom-2 right-2 bg-black/50 rounded-full px-2 py-1 text-white text-xs">
+            {current + 1}/{total}
+          </div>
+
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-white/50 text-xs md:hidden">
+            ← Desliza →
+          </div>
         </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
-  // Resto de funciones (toggleLike, addComment, deletePost se mantienen igual)
   const toggleLike = async (postId, currentLikes) => {
     const likesObj = currentLikes || {};
     const likesRef = ref(db, `posts/${postId}/likes/${currentUser.uid}`);
@@ -460,6 +440,14 @@ const Carousel = ({ media, postId }) => {
     }
   };
 
+  // Cerrar formulario móvil
+  const closePostForm = () => {
+    setShowPostForm(false);
+    setNewPostContent("");
+    setNewPostMedia([]);
+    setPrivacy("public");
+  };
+
   return (
     <div className="max-w-2xl mx-auto py-6 px-4">
       {/* Modal para media expandida */}
@@ -491,7 +479,7 @@ const Carousel = ({ media, postId }) => {
         </div>
       )}
 
-      {/* Indicador de progreso flotante */}
+      {/* Indicador de progreso flotante - CORREGIDO z-index */}
       {uploading && uploadProgress !== null && (
         <div className="fixed bottom-24 right-4 z-[100] bg-black/90 rounded-lg p-3 shadow-xl animate-slide-up min-w-[200px]">
           <div className="flex items-center gap-3">
@@ -512,8 +500,7 @@ const Carousel = ({ media, postId }) => {
             </div>
             <div className="flex-1">
               <p className="text-white text-sm font-semibold">
-                Subiendo{" "}
-                {currentUploadFile?.includes("video") ? "video" : "imagen"}
+                Subiendo {uploadType === "video" ? "video" : "imagen"}
               </p>
               <p className="text-gray-400 text-xs truncate max-w-[150px]">
                 {currentUploadFile}
@@ -598,15 +585,106 @@ const Carousel = ({ media, postId }) => {
         </div>
       </div>
 
+      {/* MODAL PARA CREAR POST EN MÓVIL - AGREGADO COMPLETO */}
+      {showPostForm && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center md:hidden">
+          <div className="bg-[#242526] rounded-2xl w-full max-h-[90vh] overflow-y-auto animate-slide-up">
+            <div className="sticky top-0 bg-[#242526] p-4 border-b border-[#3E4042] flex justify-between items-center">
+              <h3 className="text-white font-semibold text-lg">
+                Crear publicación
+              </h3>
+              <button
+                onClick={closePostForm}
+                className="text-gray-400 hover:text-white"
+              >
+                <FaTimes className="text-xl" />
+              </button>
+            </div>
+
+            <div className="p-4">
+              <textarea
+                value={newPostContent}
+                onChange={(e) => setNewPostContent(e.target.value)}
+                placeholder="¿Qué estás pensando?"
+                className="w-full bg-[#3A3B3C] text-white p-3 rounded-lg resize-none focus:outline-none"
+                rows="4"
+                autoFocus
+              />
+
+              <div className="flex flex-wrap gap-2 mt-2">
+                {newPostMedia.map((media, idx) => (
+                  <div key={idx} className="relative w-20 h-20">
+                    {media.type === "video" ? (
+                      <video
+                        src={media.url}
+                        className="w-full h-full object-cover rounded"
+                      />
+                    ) : (
+                      <img
+                        src={media.url}
+                        alt="preview"
+                        className="w-full h-full object-cover rounded"
+                      />
+                    )}
+                    <button
+                      onClick={() => removeMedia(idx)}
+                      className="absolute -top-2 -right-2 bg-red-500 rounded-full p-1"
+                    >
+                      <FaTimes className="w-3 h-3 text-white" />
+                    </button>
+                    {media.type === "video" && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <FaPlay className="text-white text-xl opacity-75" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-between items-center mt-4">
+                <div className="flex gap-2">
+                  <label className="bg-[#3A3B3C] p-2 rounded-full cursor-pointer">
+                    <FaImages className="text-[#2e9b4f] text-xl" />
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*,video/*"
+                      onChange={handleMediaUpload}
+                      className="hidden"
+                      disabled={uploading}
+                    />
+                  </label>
+                  <select
+                    value={privacy}
+                    onChange={(e) => setPrivacy(e.target.value)}
+                    className="bg-[#3A3B3C] text-white rounded-lg px-2 py-1 text-sm"
+                  >
+                    <option value="public">🌍 Público</option>
+                    <option value="friends">👥 Solo amigos</option>
+                  </select>
+                </div>
+                <button
+                  onClick={createPost}
+                  className="bg-[#2e9b4f] px-6 py-2 rounded-full font-semibold"
+                  disabled={!newPostContent.trim() && newPostMedia.length === 0}
+                >
+                  Publicar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Botón flotante para móvil */}
       <button
         onClick={() => setShowPostForm(true)}
-        className="md:hidden fixed bottom-24 right-4 bg-[#2e9b4f] text-white p-4 rounded-full shadow-lg hover:bg-[#268e46] transition-all z-40"
+        className="md:hidden fixed bottom-24 right-4 bg-[#2e9b4f] text-white p-4 rounded-full shadow-lg hover:bg-[#268e46] transition-all z-[70]"
       >
         <FaPencilAlt className="text-xl" />
       </button>
 
-      {/* Feed con scroll infinito estilo Instagram */}
+      {/* Feed */}
       <div className="space-y-6">
         {posts.map((post, index) => (
           <div
@@ -652,15 +730,12 @@ const Carousel = ({ media, postId }) => {
               )}
             </div>
 
-            {/* Contenido */}
             <p className="px-4 pb-2 text-white">{post.content}</p>
 
-            {/* Carrusel estilo Instagram */}
             {post.media?.length > 0 && (
               <Carousel media={post.media} postId={post.id} />
             )}
 
-            {/* Botones de acción */}
             <div className="flex items-center justify-around p-2 border-t border-[#3E4042] mt-2">
               <button
                 onClick={() => toggleLike(post.id, post.likes || {})}
@@ -686,7 +761,6 @@ const Carousel = ({ media, postId }) => {
               </button>
             </div>
 
-            {/* Comentarios */}
             {showCommentInput === post.id && (
               <div className="p-4 border-t border-[#3E4042]">
                 <div className="flex gap-2">
@@ -745,7 +819,6 @@ const Carousel = ({ media, postId }) => {
           </div>
         ))}
 
-        {/* Loader de carga */}
         {loading && (
           <div className="flex justify-center py-4">
             <div className="w-8 h-8 border-4 border-[#2e9b4f] border-t-transparent rounded-full animate-spin" />
