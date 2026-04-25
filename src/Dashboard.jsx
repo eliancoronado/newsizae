@@ -25,6 +25,7 @@ import NotificationToast from "./components/NotificationToast";
 import ProjectsPage from "./components/ProjectsPage";
 import Video from "./components/Video";
 import { FaCodeBranch, FaFacebookMessenger } from "react-icons/fa6";
+import { BiSolidMessageAltDetail } from "react-icons/bi";
 
 // 🎨 Componente Skeleton para los amigos (lista horizontal)
 const FriendsSkeleton = () => (
@@ -437,7 +438,7 @@ export default function Dashboard() {
                     onClick={() => setActiveTab("messages")}
                     className={`flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-xl transition-all relative border-2 border-white`}
                   >
-                    <FaFacebookMessenger className="text-2xl text-white" />
+                    <BiSolidMessageAltDetail className="text-2xl text-white" />
                     {totalUnread > 0 && (
                       <span className="absolute -top-1 -right-2 bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
                         {totalUnread > 99 ? "99+" : totalUnread}
