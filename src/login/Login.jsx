@@ -19,23 +19,22 @@ const Login = () => {
     }
   }, []);
 
-
   async function loginWithGoogle() {
     setLoading(true);
     setError(null);
-    
+
     try {
       // 1. Iniciar sesión con Google
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
-      
+
       // 2. Obtener token (ya no lo enviamos al backend)
       const token = await firebaseUser.getIdToken();
-      
+
       // 3. Guardar datos del usuario en Firebase Realtime Database
       const userRef = ref(db, `users/${firebaseUser.uid}`);
       const snapshot = await get(userRef);
-      
+
       if (!snapshot.exists()) {
         // Usuario nuevo: crear registro completo
         await set(userRef, {
@@ -51,31 +50,34 @@ const Login = () => {
           sentRequests: {},
           receivedRequests: {},
           createdAt: Date.now(),
-          lastSeen: Date.now()
+          lastSeen: Date.now(),
         });
       } else {
+        const existingData = snapshot.val();
         // Usuario existente: actualizar últimos datos
         await set(userRef, {
           ...snapshot.val(),
-          name: firebaseUser.displayName,
-          photo: firebaseUser.photoURL,
+          name: existingData.name || firebaseUser.displayName,
+          photo: existingData.photo || firebaseUser.photoURL,
           email: firebaseUser.email,
-          lastSeen: Date.now()
+          lastSeen: Date.now(),
         });
       }
-      
+
       // 4. Guardar en localStorage para uso rápido
-      localStorage.setItem("user", JSON.stringify({
-        uid: firebaseUser.uid,
-        name: firebaseUser.displayName,
-        email: firebaseUser.email,
-        picture: firebaseUser.photoURL
-      }));
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          uid: firebaseUser.uid,
+          name: firebaseUser.displayName,
+          email: firebaseUser.email,
+          picture: firebaseUser.photoURL,
+        }),
+      );
       localStorage.setItem("token", token);
-      
+
       // 5. Redirigir al dashboard
       navigate("/dashboard");
-      
     } catch (error) {
       console.error("Error login:", error);
       setError(error.message || "Error al iniciar sesión");
@@ -121,7 +123,9 @@ const Login = () => {
           ) : (
             <FcGoogle className="w-6 h-6" />
           )}
-          <span>{loading ? "Iniciando sesión..." : "Iniciar sesión con Google"}</span>
+          <span>
+            {loading ? "Iniciando sesión..." : "Iniciar sesión con Google"}
+          </span>
         </button>
 
         {/* Línea decorativa */}

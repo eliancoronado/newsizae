@@ -27,6 +27,10 @@ import {
   createProject,
   getMyFriends,
   getCurrentUser,
+  getUserById,
+  updateUserNameInPosts,
+  updateUserPhotoInPosts,
+  updateUserNameInChats,
 } from "../firebaseService";
 
 // Definición de rangos
@@ -226,6 +230,8 @@ export default function ProfilePage() {
     career: "",
     relationshipStatus: "No definido",
   });
+  const [editingPhoto, setEditingPhoto] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const relationshipOptions = [
     "No definido",
@@ -395,6 +401,83 @@ export default function ProfilePage() {
     fetchFriends();
   }, []);
 
+  // Modificar handleUpdateName
+  // ProfilePage.jsx - Modificar handleUpdateName
+  const handleUpdateName = async () => {
+    if (!nameText.trim()) return;
+    setUpdating(true);
+    try {
+      const currentUser = getCurrentUser();
+      if (!currentUser) throw new Error("No autenticado");
+
+      const newName = nameText.trim();
+
+      // 1. Actualizar perfil del usuario
+      await updateProfile(currentUser.uid, { name: newName });
+
+      // 2. Actualizar nombre en todos los posts y comentarios
+      await updateUserNameInPosts(currentUser.uid, newName);
+
+      // 3. Intentar actualizar nombre en los chats (sin importar si falla)
+      try {
+        await updateUserNameInChats(currentUser.uid, newName, profile.photo);
+      } catch (chatError) {
+        console.warn("No se pudieron actualizar los chats:", chatError);
+        // No mostramos error al usuario porque ya se actualizó lo importante
+      }
+
+      // 4. Actualizar localStorage
+      const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+      storedUser.name = newName;
+      localStorage.setItem("user", JSON.stringify(storedUser));
+
+      // 5. Actualizar el estado del perfil
+      setProfile({ ...profile, name: newName });
+      setEditingName(false);
+
+    } catch (err) {
+      console.error(err);
+      alert("Error al actualizar nombre: " + err.message);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploadingPhoto(true);
+    try {
+      // Usar uploadToS3 o uploadToImgBB según tengas configurado
+      const imageUrl = await uploadToS3(file);
+      const currentUser = getCurrentUser();
+      if (!currentUser) throw new Error("No autenticado");
+
+      // 1. Actualizar perfil del usuario
+      await updateProfile(currentUser.uid, { photo: imageUrl });
+
+      // 2. Actualizar foto en todos los posts y comentarios
+      await updateUserPhotoInPosts(currentUser.uid, imageUrl);
+
+      // 3. Actualizar foto en los chats
+      await updateUserNameInChats(currentUser.uid, profile.name, imageUrl);
+
+      // 4. Actualizar localStorage
+      const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+      storedUser.picture = imageUrl;
+      localStorage.setItem("user", JSON.stringify(storedUser));
+
+      setProfile({ ...profile, photo: imageUrl });
+    } catch (err) {
+      console.error(err);
+      alert("Error al actualizar foto");
+    } finally {
+      setUploadingPhoto(false);
+      setEditingPhoto(false);
+    }
+  };
+
   // Agrega después de handleUpdateBio
   const handleUpdatePersonalInfo = async () => {
     setUpdating(true);
@@ -431,24 +514,6 @@ export default function ProfilePage() {
       setNameText(profile.name || "");
     }
   }, [profile]);
-
-  const handleUpdateName = async () => {
-    if (!nameText.trim()) return;
-    setUpdating(true);
-    try {
-      const currentUser = getCurrentUser();
-      if (!currentUser) throw new Error("No autenticado");
-
-      await updateProfile(currentUser.uid, { name: nameText });
-      setProfile({ ...profile, name: nameText });
-      setEditingName(false);
-    } catch (err) {
-      console.error(err);
-      alert("Error al actualizar nombre");
-    } finally {
-      setUpdating(false);
-    }
-  };
 
   // 4. Reemplazar handleUpdateBio
   const handleUpdateBio = async () => {
@@ -740,13 +805,30 @@ export default function ProfilePage() {
             />
           </label>
         )}
-        <div className="absolute -bottom-12 left-8">
-          <img
-            src={profile.photo}
-            alt={profile.name}
-            className="w-24 h-24 rounded-full border-4 border-[#18191A] object-cover"
-          />
-        </div>
+        {isOwnProfile && (
+          <div className="absolute -bottom-12 left-8">
+            <img
+              src={profile.photo}
+              alt={profile.name}
+              className="w-24 h-24 rounded-full border-4 border-[#18191A] object-cover"
+            />
+            <label className="absolute bottom-0 right-0 bg-[#2e9b4f] p-1 rounded-full cursor-pointer hover:bg-[#268e46] transition">
+              <FaCamera className="text-white text-xs" />
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoUpload}
+                className="hidden"
+                disabled={uploadingPhoto}
+              />
+            </label>
+            {uploadingPhoto && (
+              <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center">
+                <LoadingSpinner size="small" />
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Información del perfil */}
@@ -755,8 +837,46 @@ export default function ProfilePage() {
           <>
             {/* Nombre con edición */}
             <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-2xl font-bold text-white">{profile.name}</h1>
+              {editingName ? (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={nameText}
+                    onChange={(e) => setNameText(e.target.value)}
+                    className="bg-[#3A3B3C] text-white p-2 rounded-lg text-2xl font-bold"
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleUpdateName}
+                    disabled={updating}
+                    className="bg-[#2e9b4f] px-3 py-1 rounded-lg text-sm"
+                  >
+                    Guardar
+                  </button>
+                  <button
+                    onClick={() => setEditingName(false)}
+                    className="bg-gray-600 px-3 py-1 rounded-lg text-sm"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <h1 className="text-2xl font-bold text-white">
+                    {profile.name}
+                  </h1>
+                  {isOwnProfile && (
+                    <button
+                      onClick={() => setEditingName(true)}
+                      className="text-sm text-[#2e9b4f] hover:underline"
+                    >
+                      <FaEdit className="inline mr-1 text-sm" /> Editar
+                    </button>
+                  )}
+                </>
+              )}
             </div>
+
             <p className="text-gray-400">{profile.email}</p>
           </>
           <div

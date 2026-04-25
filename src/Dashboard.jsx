@@ -265,6 +265,30 @@ export default function Dashboard() {
     loadFriends();
   }, [user]);
 
+  useEffect(() => {
+    if (!user) return;
+
+    const userRef = ref(db, `users/${user.uid}`);
+    const unsubscribe = onValue(userRef, (snapshot) => {
+      const updatedUser = snapshot.val();
+      if (updatedUser) {
+        setUser((prev) => ({
+          ...prev,
+          name: updatedUser.name,
+          picture: updatedUser.photo,
+        }));
+
+        // Actualizar localStorage
+        const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+        storedUser.name = updatedUser.name;
+        storedUser.picture = updatedUser.photo;
+        localStorage.setItem("user", JSON.stringify(storedUser));
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid]);
+
   // Estado de presencia (online/offline)
   useEffect(() => {
     if (!user) return;
