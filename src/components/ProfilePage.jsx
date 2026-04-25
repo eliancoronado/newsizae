@@ -570,7 +570,6 @@ export default function ProfilePage() {
       setShowCropModal(false);
       setTempImageFile(null);
       setTempImagePreview(null);
-
     } catch (err) {
       console.error(err);
       alert("Error al actualizar foto: " + err.message);
@@ -860,239 +859,240 @@ export default function ProfilePage() {
   );
 
   return (
-    <div className="w-full bg-[#18191A] rounded-xl overflow-hidden shadow-xl">
+    <div className="min-h-screen bg-gradient-to-br from-[#0f0f0f] to-[#1a1a1a]">
       {/* Modal de imagen expandida */}
       {expandedImage && (
         <div
-          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center"
+          className="fixed inset-0 bg-black/95 backdrop-blur-sm z-50 flex items-center justify-center animate-fadeIn"
           onClick={() => setExpandedImage(null)}
         >
           <img
             src={expandedImage}
             alt="expandida"
-            className="max-w-[90vw] max-h-[90vh] object-contain"
+            className="max-w-[90vw] max-h-[90vh] object-contain animate-scaleIn"
           />
           <button
-            className="absolute top-4 right-4 text-white text-3xl"
+            className="absolute top-6 right-6 text-white/80 hover:text-white text-2xl transition-all duration-300 hover:scale-110"
             onClick={() => setExpandedImage(null)}
           >
             ✕
           </button>
         </div>
       )}
-      <div
-        className="absolute top-5 left-5 z-20 rounded-full hover:bg-[#393939]/60 hover:backdrop-blur-md transition-all cursor-pointer py-3 px-3"
+
+      {/* Botón de retroceso */}
+      <button
         onClick={() => navigate("/dashboard")}
+        className="fixed top-6 left-6 z-20 p-3 rounded-full bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all duration-300 hover:scale-110 group"
       >
-        <FaArrowLeft className="text-3xl text-white" />
-      </div>
-      {/* Portada */}
-      <div className="relative h-64 bg-gradient-to-r from-purple-500 to-pink-500">
-        {profile.coverPhoto && (
-          <img
-            src={profile.coverPhoto}
-            alt="Cover"
-            className="w-full h-full object-cover"
-          />
-        )}
-        {isOwnProfile && (
-          <label className="absolute bottom-4 right-4 bg-black/60 p-2 rounded-full cursor-pointer hover:bg-black/80 transition disabled:opacity-50">
-            {uploadingCover ? (
-              <LoadingSpinner size="small" />
-            ) : (
-              <FaCamera className="text-white" />
-            )}
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleCoverPhotoUpload}
-              className="hidden"
-              disabled={uploadingCover}
-            />
-          </label>
-        )}
-        {isOwnProfile && (
-          <div className="absolute -bottom-12 left-8">
-            <img
-              src={profile.photo}
-              alt={profile.name}
-              className="w-24 h-24 rounded-full border-4 border-[#18191A] object-cover"
-            />
-            <label className="absolute bottom-0 right-0 bg-[#2e9b4f] p-1 rounded-full cursor-pointer hover:bg-[#268e46] transition">
-              <FaCamera className="text-white text-xs" />
-              <input
-                type="file"
-                accept="image/*"
-                onChange={onSelectImage}
-                className="hidden"
-                disabled={uploadingPhoto}
+        <FaArrowLeft className="text-white text-xl group-hover:-translate-x-0.5 transition-transform" />
+      </button>
+
+      {/* Contenido principal */}
+      <div className="max-w-5xl mx-auto px-4 py-8">
+        {/* Sección de portada y avatar */}
+        <div className="relative mb-8">
+          {/* Portada */}
+          <div className="relative h-48 md:h-64 rounded-2xl overflow-hidden shadow-2xl">
+            {profile.coverPhoto ? (
+              <img
+                src={profile.coverPhoto}
+                alt="Cover"
+                className="w-full h-full object-cover"
               />
-            </label>
-            {uploadingPhoto && (
-              <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center">
-                <LoadingSpinner size="small" />
-              </div>
+            ) : (
+              <div className="w-full h-full bg-gradient-to-r from-[#2d1b4e] to-[#1e3a5f]" />
+            )}
+            {isOwnProfile && (
+              <label className="absolute bottom-4 right-4 p-2 rounded-full bg-black/50 backdrop-blur-sm cursor-pointer hover:bg-black/70 transition-all duration-300 hover:scale-110">
+                {uploadingCover ? (
+                  <LoadingSpinner size="small" />
+                ) : (
+                  <FaCamera className="text-white text-sm" />
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleCoverPhotoUpload}
+                  className="hidden"
+                  disabled={uploadingCover}
+                />
+              </label>
             )}
           </div>
-        )}
-      </div>
-      {/* Información del perfil */}
-      <div className="pt-16 px-8 pb-8">
-        <div className="flex flex-col justify-between items-start mb-4">
-          <>
-            {/* Nombre con edición */}
-            <div className="flex items-center gap-2 mb-1">
-              {editingName ? (
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={nameText}
-                    onChange={(e) => setNameText(e.target.value)}
-                    className="bg-[#3A3B3C] text-white p-2 max-w-[150px] rounded-lg text-2xl font-bold"
-                    autoFocus
-                  />
-                  <button
-                    onClick={handleUpdateName}
-                    disabled={updating}
-                    className="bg-[#2e9b4f] px-3 py-1 rounded-lg text-sm"
-                  >
-                    Guardar
-                  </button>
-                  <button
-                    onClick={() => setEditingName(false)}
-                    className="bg-gray-600 px-3 py-1 rounded-lg text-sm"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              ) : (
+
+          {/* Avatar */}
+          <div className="absolute -bottom-12 left-1/2 transform -translate-x-1/2 md:left-8 md:translate-x-0">
+            <div className="relative group">
+              <img
+                src={profile.photo}
+                alt={profile.name}
+                className="w-28 h-28 md:w-32 md:h-32 rounded-full border-4 border-[#1a1a1a] object-cover shadow-xl transition-all duration-300 group-hover:scale-105"
+              />
+              {isOwnProfile && (
                 <>
-                  <h1 className="text-2xl font-bold text-white">
-                    {profile.name}
-                  </h1>
-                  {isOwnProfile && (
-                    <button
-                      onClick={() => setEditingName(true)}
-                      className="text-sm text-[#2e9b4f] hover:underline"
-                    >
-                      <FaEdit className="inline mr-1 text-sm" /> Editar
-                    </button>
+                  <label className="absolute bottom-1 right-1 p-1.5 rounded-full bg-gradient-to-r from-[#2e9b4f] to-[#1a6b3a] cursor-pointer hover:scale-110 transition-all duration-300 shadow-lg">
+                    <FaCamera className="text-white text-xs" />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={onSelectImage}
+                      className="hidden"
+                      disabled={uploadingPhoto}
+                    />
+                  </label>
+                  {uploadingPhoto && (
+                    <div className="absolute inset-0 bg-black/60 rounded-full flex items-center justify-center">
+                      <LoadingSpinner size="small" />
+                    </div>
                   )}
                 </>
               )}
             </div>
-
-            <p className="text-gray-400">{profile.email}</p>
-          </>
-          <div
-            className={`${role.color} px-4 self-end-safe py-2 mt-3 rounded-full flex items-center gap-2`}
-          >
-            <span>{role.icon}</span>
-            <span className="font-semibold">{role.name}</span>
           </div>
         </div>
 
-        {/* Biografía */}
-        <div className="mb-6">
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="text-lg font-semibold text-white">Biografía</h3>
-            {isOwnProfile && !editingBio && (
-              <button
-                onClick={() => setEditingBio(true)}
-                className="text-sm text-[#2e9b4f] hover:underline"
-              >
-                <FaEdit className="inline mr-1" /> Editar
-              </button>
-            )}
-          </div>
-          {editingBio ? (
-            <div className="flex gap-2">
-              <textarea
-                value={bioText}
-                onChange={(e) => setBioText(e.target.value)}
-                className="flex-1 bg-[#3A3B3C] text-white p-2 rounded-lg"
-                rows="3"
-              />
-              <button
-                onClick={handleUpdateBio}
-                disabled={updating}
-                className="bg-[#2e9b4f] px-4 py-2 rounded-lg disabled:opacity-50 flex items-center gap-2"
-              >
-                {updating ? <LoadingSpinner size="small" /> : null}
-                {updating ? "Guardando..." : "Guardar"}
-              </button>
-              <button
-                onClick={() => setEditingBio(false)}
-                className="bg-gray-600 px-4 py-2 rounded-lg"
-              >
-                Cancelar
-              </button>
+        {/* Información del perfil */}
+        <div className="text-center md:text-left mt-16 md:mt-8">
+          <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4 mb-6">
+            <div>
+              {/* Nombre */}
+              <div className="flex items-center justify-center md:justify-start gap-2">
+                {editingName ? (
+                  <div className="grid grid-cols-2 grid-rows-2 gap-4">
+                    <input
+                      type="text"
+                      value={nameText}
+                      onChange={(e) => setNameText(e.target.value)}
+                      className="bg-[#2a2a2a] text-white px-4 py-2 rounded-xl text-2xl font-bold outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all col-span-2"
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleUpdateName}
+                      disabled={updating}
+                      className="px-4 py-2 bg-gradient-to-r from-[#2e9b4f] to-[#1a6b3a] text-white rounded-xl text-sm font-medium hover:scale-105 transition-all duration-300 row-start-2"
+                    >
+                      Guardar
+                    </button>
+                    <button
+                      onClick={() => setEditingName(false)}
+                      className="px-4 py-2 bg-[#2a2a2a] text-white rounded-xl text-sm font-medium hover:bg-[#3a3a3a] transition-all row-start-2"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-3xl md:text-4xl font-bold text-white">
+                      {profile.name}
+                    </h1>
+                    {isOwnProfile && (
+                      <button
+                        onClick={() => setEditingName(true)}
+                        className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-all duration-300 hover:scale-110"
+                      >
+                        <FaEdit className="text-white text-sm" />
+                      </button>
+                    )}
+                  </div>
+                )}
+                {/*
+                <div
+                  className={`${role.color} px-3 py-1 rounded-full flex items-center gap-1 shadow-lg`}
+                >
+                  <span>{role.icon}</span>
+                  <span className="text-xs font-medium">{role.name}</span>
+                </div>
+                */}
+                </div>
+              <p className="text-gray-400 text-sm mt-1">{profile.email}</p>
             </div>
-          ) : (
-            <p className="text-gray-300">
-              {profile.bio || "Este usuario aún no ha escrito una biografía."}
-            </p>
-          )}
-        </div>
+          </div>
 
-        {/* INFORMACIÓN PERSONAL - NUEVA SECCIÓN */}
-        <div className="mb-6">
-          <div className="flex justify-between items-center mb-3">
-            <h3 className="text-lg font-semibold text-white">
-              Información Personal
-            </h3>
-            {isOwnProfile && !editingPersonalInfo && (
-              <button
-                onClick={() => setEditingPersonalInfo(true)}
-                className="text-sm text-[#2e9b4f] hover:underline"
-              >
-                <FaEdit className="inline mr-1" /> Editar
-              </button>
+          {/* Biografía */}
+          <div className="mb-8 p-4 bg-white/5 rounded-xl backdrop-blur-sm">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-white font-semibold">Biografía</h3>
+              {isOwnProfile && !editingBio && (
+                <button
+                  onClick={() => setEditingBio(true)}
+                  className="text-sm text-[#2e9b4f] hover:underline transition-all"
+                >
+                  <FaEdit className="inline mr-1 text-xs" /> Editar
+                </button>
+              )}
+            </div>
+            {editingBio ? (
+              <div className="flex gap-2">
+                <textarea
+                  value={bioText}
+                  onChange={(e) => setBioText(e.target.value)}
+                  className="flex-1 bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
+                  rows="3"
+                />
+                <button
+                  onClick={handleUpdateBio}
+                  disabled={updating}
+                  className="px-4 py-2 bg-gradient-to-r from-[#2e9b4f] to-[#1a6b3a] text-white rounded-xl text-sm font-medium hover:scale-105 transition-all"
+                >
+                  {updating ? <LoadingSpinner size="small" /> : "Guardar"}
+                </button>
+                <button
+                  onClick={() => setEditingBio(false)}
+                  className="px-4 py-2 bg-[#2a2a2a] text-white rounded-xl text-sm font-medium hover:bg-[#3a3a3a] transition-all"
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <p className="text-gray-300 leading-relaxed">
+                {profile.bio ||
+                  "✨ Este usuario aún no ha escrito una biografía."}
+              </p>
             )}
           </div>
 
-          {editingPersonalInfo ? (
-            <div className="bg-[#242526] rounded-lg p-4 space-y-3">
-              {/* Fecha de nacimiento */}
-              <div>
-                <label className="text-gray-400 text-sm block mb-1">
-                  Fecha de nacimiento
-                </label>
-                <input
-                  type="date"
-                  value={personalInfo.birthDate}
-                  onChange={(e) =>
-                    setPersonalInfo({
-                      ...personalInfo,
-                      birthDate: e.target.value,
-                    })
-                  }
-                  className="w-full bg-[#3A3B3C] text-white p-2 rounded-lg"
-                />
-              </div>
+          {/* Información Personal */}
+          <div className="mb-8 p-4 bg-white/5 rounded-xl backdrop-blur-sm">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-white font-semibold">Información Personal</h3>
+              {isOwnProfile && !editingPersonalInfo && (
+                <button
+                  onClick={() => setEditingPersonalInfo(true)}
+                  className="text-sm text-[#2e9b4f] hover:underline transition-all"
+                >
+                  <FaEdit className="inline mr-1 text-xs" /> Editar
+                </button>
+              )}
+            </div>
 
-              {/* Teléfono */}
-              <div>
-                <label className="text-gray-400 text-sm block mb-1">
-                  Teléfono
-                </label>
-                <input
-                  type="tel"
-                  value={personalInfo.phone}
-                  onChange={(e) =>
-                    setPersonalInfo({ ...personalInfo, phone: e.target.value })
-                  }
-                  placeholder="+505 1234 5678"
-                  className="w-full bg-[#3A3B3C] text-white p-2 rounded-lg"
-                />
-              </div>
-
-              {/* Departamento y Municipio */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-gray-400 text-sm block mb-1">
-                    Departamento
-                  </label>
+            {editingPersonalInfo ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <input
+                    type="date"
+                    value={personalInfo.birthDate}
+                    onChange={(e) =>
+                      setPersonalInfo({
+                        ...personalInfo,
+                        birthDate: e.target.value,
+                      })
+                    }
+                    placeholder="Fecha de nacimiento"
+                    className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
+                  />
+                  <input
+                    type="tel"
+                    value={personalInfo.phone}
+                    onChange={(e) =>
+                      setPersonalInfo({
+                        ...personalInfo,
+                        phone: e.target.value,
+                      })
+                    }
+                    placeholder="Teléfono"
+                    className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
+                  />
                   <input
                     type="text"
                     value={personalInfo.department}
@@ -1102,14 +1102,9 @@ export default function ProfilePage() {
                         department: e.target.value,
                       })
                     }
-                    placeholder="Ej: Managua"
-                    className="w-full bg-[#3A3B3C] text-white p-2 rounded-lg"
+                    placeholder="Departamento"
+                    className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
                   />
-                </div>
-                <div>
-                  <label className="text-gray-400 text-sm block mb-1">
-                    Municipio
-                  </label>
                   <input
                     type="text"
                     value={personalInfo.municipality}
@@ -1119,18 +1114,9 @@ export default function ProfilePage() {
                         municipality: e.target.value,
                       })
                     }
-                    placeholder="Ej: Managua"
-                    className="w-full bg-[#3A3B3C] text-white p-2 rounded-lg"
+                    placeholder="Municipio"
+                    className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
                   />
-                </div>
-              </div>
-
-              {/* Universidad y Carrera */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-gray-400 text-sm block mb-1">
-                    Universidad
-                  </label>
                   <input
                     type="text"
                     value={personalInfo.university}
@@ -1140,14 +1126,9 @@ export default function ProfilePage() {
                         university: e.target.value,
                       })
                     }
-                    placeholder="Ej: UNAN-Managua"
-                    className="w-full bg-[#3A3B3C] text-white p-2 rounded-lg"
+                    placeholder="Universidad"
+                    className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
                   />
-                </div>
-                <div>
-                  <label className="text-gray-400 text-sm block mb-1">
-                    Carrera
-                  </label>
                   <input
                     type="text"
                     value={personalInfo.career}
@@ -1157,381 +1138,114 @@ export default function ProfilePage() {
                         career: e.target.value,
                       })
                     }
-                    placeholder="Ej: Ingeniería en Sistemas"
-                    className="w-full bg-[#3A3B3C] text-white p-2 rounded-lg"
+                    placeholder="Carrera"
+                    className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
                   />
+                  <select
+                    value={personalInfo.relationshipStatus}
+                    onChange={(e) =>
+                      setPersonalInfo({
+                        ...personalInfo,
+                        relationshipStatus: e.target.value,
+                      })
+                    }
+                    className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
+                  >
+                    {relationshipOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              </div>
-
-              {/* Estado sentimental */}
-              <div>
-                <label className="text-gray-400 text-sm block mb-1">
-                  Estado sentimental
-                </label>
-                <select
-                  value={personalInfo.relationshipStatus}
-                  onChange={(e) =>
-                    setPersonalInfo({
-                      ...personalInfo,
-                      relationshipStatus: e.target.value,
-                    })
-                  }
-                  className="w-full bg-[#3A3B3C] text-white p-2 rounded-lg"
-                >
-                  {relationshipOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  onClick={handleUpdatePersonalInfo}
-                  disabled={updating}
-                  className="bg-[#2e9b4f] px-4 py-2 rounded-lg disabled:opacity-50"
-                >
-                  {updating ? "Guardando..." : "Guardar cambios"}
-                </button>
-                <button
-                  onClick={() => setEditingPersonalInfo(false)}
-                  className="bg-gray-600 px-4 py-2 rounded-lg"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-[#242526] rounded-lg p-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-gray-400 text-sm">Fecha de nacimiento</p>
-                  <p className="text-white">
-                    {personalInfo.birthDate || "No especificado"}
-                  </p>
+                <div className="flex gap-2 pt-2">
+                  <button
+                    onClick={handleUpdatePersonalInfo}
+                    disabled={updating}
+                    className="px-4 py-2 bg-gradient-to-r from-[#2e9b4f] to-[#1a6b3a] text-white rounded-xl text-sm font-medium hover:scale-105 transition-all"
+                  >
+                    {updating ? "Guardando..." : "Guardar cambios"}
+                  </button>
+                  <button
+                    onClick={() => setEditingPersonalInfo(false)}
+                    className="px-4 py-2 bg-[#2a2a2a] text-white rounded-xl text-sm font-medium hover:bg-[#3a3a3a] transition-all"
+                  >
+                    Cancelar
+                  </button>
                 </div>
-                <div>
-                  <p className="text-gray-400 text-sm">Teléfono</p>
-                  <p className="text-white">
-                    {personalInfo.phone || "No especificado"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-400 text-sm">Ubicación</p>
-                  <p className="text-white">
-                    {personalInfo.department || "No especificado"}
-                    {personalInfo.department &&
-                      personalInfo.municipality &&
-                      ", "}
-                    {personalInfo.municipality || ""}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-400 text-sm">Universidad</p>
-                  <p className="text-white">
-                    {personalInfo.university || "No especificado"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-400 text-sm">Carrera</p>
-                  <p className="text-white">
-                    {personalInfo.career || "No especificado"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-400 text-sm">Estado sentimental</p>
-                  <p className="text-white">
-                    {personalInfo.relationshipStatus || "No definido"}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Proyectos */}
-        <div className="mb-6">
-          <div className="flex justify-between items-center mb-3">
-            <div className="flex items-center gap-2">
-              <FaProjectDiagram className="text-[#2e9b4f]" />
-              <h3 className="text-lg font-semibold text-white">Proyectos</h3>
-            </div>
-            {isOwnProfile && (
-              <button
-                onClick={() => setShowProjectForm(!showProjectForm)}
-                className="text-sm text-[#2e9b4f]"
-              >
-                + Agregar proyecto
-              </button>
-            )}
-          </div>
-
-          {showProjectForm && (
-            <form
-              onSubmit={handleCreateProject}
-              className="bg-[#242526] p-4 rounded-lg mb-4"
-            >
-              <input
-                type="text"
-                placeholder="Título del proyecto"
-                value={newProject.title}
-                onChange={(e) =>
-                  setNewProject({ ...newProject, title: e.target.value })
-                }
-                className="w-full bg-[#3A3B3C] text-white p-2 rounded-lg mb-2"
-                required
-              />
-              <textarea
-                placeholder="Descripción"
-                value={newProject.description}
-                onChange={(e) =>
-                  setNewProject({ ...newProject, description: e.target.value })
-                }
-                className="w-full bg-[#3A3B3C] text-white p-2 rounded-lg mb-2"
-                rows="2"
-                required
-              />
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) =>
-                  setNewProject({ ...newProject, image: e.target.files[0] })
-                }
-                className="mb-2 text-gray-400"
-              />
-              <input
-                type="url"
-                placeholder="Enlace del proyecto (opcional)"
-                value={newProject.link}
-                onChange={(e) =>
-                  setNewProject({ ...newProject, link: e.target.value })
-                }
-                className="w-full bg-[#3A3B3C] text-white p-2 rounded-lg mb-2"
-              />
-              <div className="flex gap-2">
-                <button
-                  type="submit"
-                  disabled={creatingProject}
-                  className="bg-[#2e9b4f] px-4 py-2 rounded-lg disabled:opacity-50 flex items-center gap-2"
-                >
-                  {creatingProject ? <LoadingSpinner size="small" /> : null}
-                  {creatingProject ? "Creando..." : "Crear"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowProjectForm(false)}
-                  className="bg-gray-600 px-4 py-2 rounded-lg"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </form>
-          )}
-
-          {profile.projects?.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {profile.projects.map((project) => (
-                <div key={project.id} className="bg-[#242526] rounded-lg p-4">
-                  {project.image && (
-                    <img
-                      src={project.image}
-                      alt={project.title}
-                      className="w-full h-40 object-cover rounded-lg mb-3"
-                    />
-                  )}
-                  <h4 className="font-semibold text-white">{project.title}</h4>
-                  <p className="text-gray-400 text-sm mt-1">
-                    {project.description}
-                  </p>
-                  {project.link && (
-                    <a
-                      href={project.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[#2e9b4f] text-sm mt-2 inline-flex items-center gap-1"
-                    >
-                      Ver proyecto <FaGlobe className="w-3 h-3" />
-                    </a>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-gray-400">No hay proyectos para mostrar.</p>
-          )}
-        </div>
-
-        {/* Sección de Publicaciones */}
-        <div>
-          <h3 className="text-lg font-semibold text-white mb-3">
-            Publicaciones
-          </h3>
-          <div className="space-y-6">
-            {posts.length === 0 ? (
-              <div className="bg-[#242526] rounded-lg p-6 text-center text-gray-400">
-                <p>No hay publicaciones aún</p>
-                {isOwnProfile && (
-                  <p className="text-sm mt-2">Comparte algo con la comunidad</p>
-                )}
               </div>
             ) : (
-              posts.map((post) => (
-                <div
-                  key={post.id}
-                  className="bg-[#242526] rounded-xl overflow-hidden shadow"
-                >
-                  {/* Header del post */}
-                  <div className="flex items-center justify-between p-4">
-                    <div className="flex items-center gap-3">
-                      <img
-                        src={post.userPhoto}
-                        alt={post.userName}
-                        className="w-10 h-10 rounded-full cursor-pointer"
-                        onClick={() => navigate(`/profile/${post.userId}`)}
-                      />
-                      <div>
-                        <p
-                          className="font-semibold text-white cursor-pointer hover:underline"
-                          onClick={() => navigate(`/profile/${post.userId}`)}
-                        >
-                          {post.userName}
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          {formatDistanceToNow(post.timestamp, {
-                            addSuffix: true,
-                            locale: es,
-                          })}
-                        </p>
-                      </div>
-                    </div>
-                    {(isOwnProfile || post.userId === currentUserData?.uid) && (
-                      <button
-                        onClick={() => deletePost(post.id)}
-                        className="text-gray-400 hover:text-red-500"
-                      >
-                        <FaTrash />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Contenido */}
-                  <p className="px-4 pb-2 text-white">{post.content}</p>
-                  {post.images?.length > 0 && (
-                    <ImageCollage
-                      images={post.images}
-                      onImageClick={setExpandedImage}
-                    />
-                  )}
-
-                  {/* Botones de acción */}
-                  <div className="flex items-center justify-around p-2 border-t border-[#3E4042] mt-2">
-                    <button
-                      onClick={() => toggleLike(post.id, post.likes)}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${post.likes?.[currentUserData?.uid] ? "text-red-500" : "text-gray-400 hover:bg-[#3A3B3C]"}`}
-                    >
-                      <FaHeart
-                        className={
-                          post.likes?.[currentUserData?.uid]
-                            ? "fill-red-500"
-                            : ""
-                        }
-                      />
-                      <span>{Object.keys(post.likes || {}).length}</span>
-                    </button>
-                    <button
-                      onClick={() =>
-                        setShowCommentInput(
-                          showCommentInput === post.id ? null : post.id,
-                        )
-                      }
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-gray-400 hover:bg-[#3A3B3C]"
-                    >
-                      <FaComment />
-                      <span>{Object.keys(post.comments || {}).length}</span>
-                    </button>
-                  </div>
-
-                  {/* Comentarios */}
-                  {showCommentInput === post.id && (
-                    <div className="p-4 border-t border-[#3E4042]">
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={commentText}
-                          onChange={(e) => setCommentText(e.target.value)}
-                          placeholder="Escribe un comentario..."
-                          className="flex-1 bg-[#3A3B3C] text-white p-2 rounded-full outline-none"
-                        />
-                        <button
-                          onClick={() => addComment(post.id)}
-                          className="bg-[#2e9b4f] px-4 py-2 rounded-full text-sm"
-                        >
-                          Enviar
-                        </button>
-                      </div>
-                      <div className="mt-4 space-y-3 max-h-60 overflow-y-auto">
-                        {post.comments &&
-                          Object.entries(post.comments)
-                            .sort((a, b) => b[1].timestamp - a[1].timestamp)
-                            .map(([cid, comment]) => (
-                              <div key={cid} className="flex gap-2">
-                                <img
-                                  src={comment.userPhoto}
-                                  alt={comment.userName}
-                                  className="w-8 h-8 rounded-full cursor-pointer"
-                                  onClick={() =>
-                                    navigate(`/profile/${comment.userId}`)
-                                  }
-                                />
-                                <div className="flex-1 bg-[#3A3B3C] rounded-lg p-2">
-                                  <p
-                                    className="font-semibold text-white text-sm cursor-pointer hover:underline"
-                                    onClick={() =>
-                                      navigate(`/profile/${comment.userId}`)
-                                    }
-                                  >
-                                    {comment.userName}
-                                  </p>
-                                  <p className="text-gray-300 text-sm">
-                                    {comment.text}
-                                  </p>
-                                  <p className="text-xs text-gray-500 mt-1">
-                                    {formatDistanceToNow(comment.timestamp, {
-                                      addSuffix: true,
-                                      locale: es,
-                                    })}
-                                  </p>
-                                </div>
-                              </div>
-                            ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <InfoItem
+                  label="Fecha de nacimiento"
+                  value={personalInfo.birthDate}
+                />
+                <InfoItem label="Teléfono" value={personalInfo.phone} />
+                <InfoItem
+                  label="Ubicación"
+                  value={`${personalInfo.department || ""} ${personalInfo.municipality ? `, ${personalInfo.municipality}` : ""}`}
+                />
+                <InfoItem label="Universidad" value={personalInfo.university} />
+                <InfoItem label="Carrera" value={personalInfo.career} />
+                <InfoItem
+                  label="Estado sentimental"
+                  value={personalInfo.relationshipStatus}
+                />
+              </div>
             )}
           </div>
-        </div>
-      </div>
-      {/* Modal de recorte de imagen */}
-      {showCropModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-          <div className="bg-[#242526] rounded-xl w-full max-w-lg mx-4 overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-[#3E4042]">
-              <h3 className="text-lg font-semibold text-white">
-                Recortar foto de perfil
-              </h3>
-              <button
-                onClick={closeCropModal}
-                className="text-gray-400 hover:text-white transition"
-              >
-                <FaTimes />
-              </button>
-            </div>
 
-            <div className="p-4">
-              <div className="flex justify-center">
+          {/* Sección de Publicaciones */}
+          <div className="mb-8">
+            <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+              <span>📱</span> Publicaciones
+            </h3>
+            <div className="space-y-4">
+              {posts.length === 0 ? (
+                <div className="bg-white/5 rounded-xl p-8 text-center">
+                  <p className="text-gray-400">✨ No hay publicaciones aún</p>
+                  {isOwnProfile && (
+                    <p className="text-sm text-gray-500 mt-2">
+                      Comparte algo con la comunidad
+                    </p>
+                  )}
+                </div>
+              ) : (
+                posts.map((post) => (
+                  <PostCard
+                    key={post.id}
+                    post={post}
+                    currentUserData={currentUserData}
+                    isOwnProfile={isOwnProfile}
+                    onDelete={deletePost}
+                    onLike={toggleLike}
+                    onComment={addComment}
+                    onNavigate={navigate}
+                    setExpandedImage={setExpandedImage}
+                  />
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Modal de recorte */}
+        {showCropModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md animate-fadeIn">
+            <div className="bg-[#1a1a1a] rounded-2xl w-full max-w-lg mx-4 overflow-hidden shadow-2xl">
+              <div className="flex justify-between items-center p-4 border-b border-white/10">
+                <h3 className="text-lg font-semibold text-white">
+                  Editar foto de perfil
+                </h3>
+                <button
+                  onClick={closeCropModal}
+                  className="text-gray-400 hover:text-white transition-all duration-300 hover:rotate-90"
+                >
+                  <FaTimes />
+                </button>
+              </div>
+
+              <div className="p-4">
                 <Cropper
                   ref={cropperRef}
                   src={tempImagePreview}
@@ -1539,48 +1253,166 @@ export default function ProfilePage() {
                   initialAspectRatio={1}
                   aspectRatio={1}
                   viewMode={1}
-                  guides={true}
+                  guides={false}
                   dragMode="move"
                   cropBoxMovable={true}
                   cropBoxResizable={true}
                   toggleDragModeOnDblclick={false}
                   background={false}
                 />
+                <p className="text-center text-gray-400 text-sm mt-4">
+                  Arrastra y ajusta el recuadro para centrar tu foto
+                </p>
               </div>
 
-              <div className="text-center text-gray-400 text-sm mt-3">
-                Arrastra y ajusta el recuadro para centrar tu foto
+              <div className="flex gap-3 p-4 border-t border-white/10">
+                <button
+                  onClick={closeCropModal}
+                  className="flex-1 px-4 py-2 bg-[#2a2a2a] text-white rounded-xl font-medium hover:bg-[#3a3a3a] transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleCropAndUpload}
+                  disabled={cropProgress}
+                  className="flex-1 px-4 py-2 bg-gradient-to-r from-[#2e9b4f] to-[#1a6b3a] text-white rounded-xl font-medium hover:scale-105 transition-all duration-300 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {cropProgress ? (
+                    <>
+                      <FaSpinner className="animate-spin" />
+                      <span>Subiendo...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FaCheck />
+                      <span>Guardar</span>
+                    </>
+                  )}
+                </button>
               </div>
-            </div>
-
-            <div className="flex gap-3 p-4 border-t border-[#3E4042]">
-              <button
-                onClick={closeCropModal}
-                className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleCropAndUpload}
-                disabled={cropProgress}
-                className="flex-1 px-4 py-2 bg-[#2e9b4f] text-white rounded-lg hover:bg-[#268e46] transition disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {cropProgress ? (
-                  <>
-                    <FaSpinner className="animate-spin" />
-                    <span>Subiendo...</span>
-                  </>
-                ) : (
-                  <>
-                    <FaCheck />
-                    <span>Guardar</span>
-                  </>
-                )}
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+
+      <style jsx>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+        @keyframes scaleIn {
+          from {
+            transform: scale(0.9);
+            opacity: 0;
+          }
+          to {
+            transform: scale(1);
+            opacity: 1;
+          }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out;
+        }
+        .animate-scaleIn {
+          animation: scaleIn 0.3s ease-out;
+        }
+      `}</style>
     </div>
   );
 }
+
+// Componente auxiliar fuera del componente principal
+const InfoItem = ({ label, value }) => (
+  <div className="bg-white/5 rounded-lg p-3">
+    <p className="text-gray-400 text-xs uppercase tracking-wider mb-1">
+      {label}
+    </p>
+    <p className="text-white text-sm font-medium">
+      {value && value.trim() ? value : "No especificado"}
+    </p>
+  </div>
+);
+
+// Componente para posts (opcional, para mantener limpio el código)
+const PostCard = ({
+  post,
+  currentUserData,
+  isOwnProfile,
+  onDelete,
+  onLike,
+  onComment,
+  onNavigate,
+  setExpandedImage,
+}) => (
+  <div className="bg-white/5 rounded-xl overflow-hidden hover:bg-white/10 transition-all duration-300">
+    {/* Header */}
+    <div className="flex items-center justify-between p-4">
+      <div className="flex items-center gap-3">
+        <img
+          src={post.userPhoto}
+          alt={post.userName}
+          className="w-10 h-10 rounded-full cursor-pointer hover:scale-105 transition-transform"
+          onClick={() => onNavigate(`/profile/${post.userId}`)}
+        />
+        <div>
+          <p
+            className="font-semibold text-white cursor-pointer hover:underline"
+            onClick={() => onNavigate(`/profile/${post.userId}`)}
+          >
+            {post.userName}
+          </p>
+          <p className="text-xs text-gray-400">
+            {formatDistanceToNow(post.timestamp, {
+              addSuffix: true,
+              locale: es,
+            })}
+          </p>
+        </div>
+      </div>
+      {(isOwnProfile || post.userId === currentUserData?.uid) && (
+        <button
+          onClick={() => onDelete(post.id)}
+          className="text-gray-400 hover:text-red-500 transition-all duration-300"
+        >
+          <FaTrash />
+        </button>
+      )}
+    </div>
+
+    {/* Contenido */}
+    <p className="px-4 pb-2 text-white">{post.content}</p>
+    {post.images?.length > 0 && (
+      <ImageCollage images={post.images} onImageClick={setExpandedImage} />
+    )}
+
+    {/* Botones de acción */}
+    <div className="flex items-center justify-around p-2 border-t border-white/10 mt-2">
+      <button
+        onClick={() => onLike(post.id, post.likes)}
+        className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 hover:scale-105 ${
+          post.likes?.[currentUserData?.uid]
+            ? "text-red-500"
+            : "text-gray-400 hover:text-white"
+        }`}
+      >
+        <FaHeart
+          className={post.likes?.[currentUserData?.uid] ? "fill-red-500" : ""}
+        />
+        <span>{Object.keys(post.likes || {}).length}</span>
+      </button>
+      <button
+        onClick={() =>
+          setShowCommentInput(showCommentInput === post.id ? null : post.id)
+        }
+        className="flex items-center gap-2 px-4 py-2 rounded-lg text-gray-400 hover:text-white transition-all duration-300 hover:scale-105"
+      >
+        <FaComment />
+        <span>{Object.keys(post.comments || {}).length}</span>
+      </button>
+    </div>
+  </div>
+);
