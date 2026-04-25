@@ -1,5 +1,7 @@
 // components/ProfilePage.jsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import Cropper from "react-cropper";
+import "./cropper.css";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
@@ -12,6 +14,8 @@ import {
   FaHeart,
   FaComment,
   FaTrash,
+  FaTimes,
+  FaCheck,
 } from "react-icons/fa";
 import { uploadToImgBB } from "../utils/uploadImage";
 import { uploadToS3 } from "../utils/uploadToS3SDK"; // o uploadToS3SDK
@@ -232,6 +236,12 @@ export default function ProfilePage() {
   });
   const [editingPhoto, setEditingPhoto] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  // Agrega estos estados después de los estados existentes
+  const [showCropModal, setShowCropModal] = useState(false);
+  const [tempImageFile, setTempImageFile] = useState(null);
+  const [tempImagePreview, setTempImagePreview] = useState(null);
+  const [cropProgress, setCropProgress] = useState(false);
+  const cropperRef = useRef(null);
 
   const relationshipOptions = [
     "No definido",
@@ -434,7 +444,6 @@ export default function ProfilePage() {
       // 5. Actualizar el estado del perfil
       setProfile({ ...profile, name: newName });
       setEditingName(false);
-
     } catch (err) {
       console.error(err);
       alert("Error al actualizar nombre: " + err.message);
@@ -476,6 +485,105 @@ export default function ProfilePage() {
       setUploadingPhoto(false);
       setEditingPhoto(false);
     }
+  };
+
+  // Reemplaza la función handlePhotoUpload con estas nuevas funciones
+  const onSelectImage = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validar tipo de archivo
+    if (!file.type.startsWith("image/")) {
+      alert("Por favor selecciona una imagen válida");
+      return;
+    }
+
+    // Validar tamaño (máx 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert("La imagen no debe pesar más de 5MB");
+      return;
+    }
+
+    setTempImageFile(file);
+    setTempImagePreview(URL.createObjectURL(file));
+    setShowCropModal(true);
+    setEditingPhoto(false);
+  };
+
+  const getCroppedImage = () => {
+    const cropper = cropperRef.current?.cropper;
+    if (!cropper) return null;
+
+    // Obtener la imagen recortada como canvas
+    const canvas = cropper.getCroppedCanvas({
+      width: 400,
+      height: 400,
+      imageSmoothingEnabled: true,
+      imageSmoothingQuality: "high",
+    });
+
+    // Convertir canvas a blob
+    return new Promise((resolve) => {
+      canvas.toBlob(
+        (blob) => {
+          resolve(blob);
+        },
+        "image/jpeg",
+        0.9,
+      );
+    });
+  };
+
+  const handleCropAndUpload = async () => {
+    setCropProgress(true);
+    try {
+      const croppedBlob = await getCroppedImage();
+      if (!croppedBlob) throw new Error("No se pudo recortar la imagen");
+
+      const croppedFile = new File([croppedBlob], "profile.jpg", {
+        type: "image/jpeg",
+      });
+
+      // Usar uploadToS3 o uploadToImgBB según tengas configurado
+      const imageUrl = await uploadToS3(croppedFile);
+      const currentUser = getCurrentUser();
+      if (!currentUser) throw new Error("No autenticado");
+
+      // 1. Actualizar perfil del usuario
+      await updateProfile(currentUser.uid, { photo: imageUrl });
+
+      // 2. Actualizar foto en todos los posts y comentarios
+      await updateUserPhotoInPosts(currentUser.uid, imageUrl);
+
+      // 3. Actualizar foto en los chats
+      await updateUserNameInChats(currentUser.uid, profile.name, imageUrl);
+
+      // 4. Actualizar localStorage
+      const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+      storedUser.picture = imageUrl;
+      localStorage.setItem("user", JSON.stringify(storedUser));
+
+      // 5. Actualizar el estado del perfil
+      setProfile({ ...profile, photo: imageUrl });
+
+      // 6. Cerrar modal
+      setShowCropModal(false);
+      setTempImageFile(null);
+      setTempImagePreview(null);
+
+    } catch (err) {
+      console.error(err);
+      alert("Error al actualizar foto: " + err.message);
+    } finally {
+      setCropProgress(false);
+    }
+  };
+
+  const closeCropModal = () => {
+    setShowCropModal(false);
+    setTempImageFile(null);
+    setTempImagePreview(null);
+    setEditingPhoto(false);
   };
 
   // Agrega después de handleUpdateBio
@@ -772,14 +880,12 @@ export default function ProfilePage() {
           </button>
         </div>
       )}
-
       <div
         className="absolute top-5 left-5 z-20 rounded-full hover:bg-[#393939]/60 hover:backdrop-blur-md transition-all cursor-pointer py-3 px-3"
         onClick={() => navigate("/dashboard")}
       >
         <FaArrowLeft className="text-3xl text-white" />
       </div>
-
       {/* Portada */}
       <div className="relative h-64 bg-gradient-to-r from-purple-500 to-pink-500">
         {profile.coverPhoto && (
@@ -817,7 +923,7 @@ export default function ProfilePage() {
               <input
                 type="file"
                 accept="image/*"
-                onChange={handlePhotoUpload}
+                onChange={onSelectImage}
                 className="hidden"
                 disabled={uploadingPhoto}
               />
@@ -830,7 +936,6 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
-
       {/* Información del perfil */}
       <div className="pt-16 px-8 pb-8">
         <div className="flex flex-col justify-between items-start mb-4">
@@ -1409,6 +1514,73 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+      {/* Modal de recorte de imagen */}
+      {showCropModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+          <div className="bg-[#242526] rounded-xl w-full max-w-lg mx-4 overflow-hidden">
+            <div className="flex justify-between items-center p-4 border-b border-[#3E4042]">
+              <h3 className="text-lg font-semibold text-white">
+                Recortar foto de perfil
+              </h3>
+              <button
+                onClick={closeCropModal}
+                className="text-gray-400 hover:text-white transition"
+              >
+                <FaTimes />
+              </button>
+            </div>
+
+            <div className="p-4">
+              <div className="flex justify-center">
+                <Cropper
+                  ref={cropperRef}
+                  src={tempImagePreview}
+                  style={{ height: 400, width: "100%" }}
+                  initialAspectRatio={1}
+                  aspectRatio={1}
+                  viewMode={1}
+                  guides={true}
+                  dragMode="move"
+                  cropBoxMovable={true}
+                  cropBoxResizable={true}
+                  toggleDragModeOnDblclick={false}
+                  background={false}
+                />
+              </div>
+
+              <div className="text-center text-gray-400 text-sm mt-3">
+                Arrastra y ajusta el recuadro para centrar tu foto
+              </div>
+            </div>
+
+            <div className="flex gap-3 p-4 border-t border-[#3E4042]">
+              <button
+                onClick={closeCropModal}
+                className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleCropAndUpload}
+                disabled={cropProgress}
+                className="flex-1 px-4 py-2 bg-[#2e9b4f] text-white rounded-lg hover:bg-[#268e46] transition disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {cropProgress ? (
+                  <>
+                    <FaSpinner className="animate-spin" />
+                    <span>Subiendo...</span>
+                  </>
+                ) : (
+                  <>
+                    <FaCheck />
+                    <span>Guardar</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

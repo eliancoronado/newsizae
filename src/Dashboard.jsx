@@ -1,5 +1,5 @@
 // Dashboard.jsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { setupPresence } from "./precense";
 import { useNavigate } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
