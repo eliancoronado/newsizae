@@ -16,15 +16,6 @@ const SidebarB = () => {
   const { projectData } = useStore();
   const navigate = useNavigate();
 
-  /*
-        <div
-          className="w-full py-4 cursor-pointer hover:bg-[rgba(255,255,255,0.3)] flex items-center justify-center"
-          onClick={() => setMode("files")}
-        >
-          <FaRegImages className="text-2xl text-[#FFD966]" />
-        </div>
-  */
-
   return (
     <div className="w-[80px] h-full bg-[#1C1B2F] overflow-y-auto max-h-full hidden md:flex md:flex-col md:items-center md:py-2 lg:py-4 md:justify-between scrollbar-hide">
       <div className="w-full flex flex-col items-center">
@@ -50,6 +41,12 @@ const SidebarB = () => {
           onClick={() => setMode("ia")}
         >
           <GoCopilot className="text-2xl text-[#FFD966]" />
+        </div>
+        <div
+          className="w-full py-4 cursor-pointer hover:bg-[rgba(255,255,255,0.3)] flex items-center justify-center"
+          onClick={() => setMode("files")}
+        >
+          <FaRegImages className="text-2xl text-[#FFD966]" />
         </div>
         <div
           className="w-full py-4 cursor-pointer hover:bg-[rgba(255,255,255,0.3)] flex items-center justify-center"

@@ -4,7 +4,7 @@ import RightPanel from "./RightPanel";
 import CentralPanel from "./CentralPanel";
 import useAppManager from "../hooks/useAppManager";
 import React, { useEffect, useState, Suspense } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import BlocklyComponent from "./blockly/BlocklyComponent";
 import useStore from "../store/store";
 import RGS from "./GStyles/RPGS";
@@ -14,6 +14,7 @@ import { ref, get, set } from "firebase/database";
 import { db } from "../firebase";
 import { auth } from "../firebase";
 import { useFullscreen } from "../hooks/useFullscreen";
+import { onAuthStateChanged } from "firebase/auth";
 
 const CustomCodeEditor = React.lazy(() => import("./CodeEditor"));
 
@@ -57,6 +58,27 @@ const AppB = () => {
   const [selectedGS, setSelectedGS] = useState(null);
   const [gs, setGs] = useState([]);
   const { enterFullscreen } = useFullscreen();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const navigate = useNavigate();
+
+  // 🔥 Verificar autenticación al cargar
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        console.log("✅ Usuario autenticado:", user.uid);
+        setIsAuthenticated(true);
+      } else {
+        console.log("❌ No hay usuario autenticado");
+        navigate("/")
+        setIsAuthenticated(false);
+        toast({
+          description: "Debes iniciar sesión para acceder a este proyecto",
+          variant: "destructive",
+        });
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Agregar un listener para activar pantalla completa con el primer clic
   useEffect(() => {
@@ -76,11 +98,34 @@ const AppB = () => {
   // ========== Cargar proyecto desde Firebase ==========
   useEffect(() => {
     const fetchProject = async () => {
-      if (!id) return;
+      // 🔥 Esperar a que el usuario esté autenticado
+      if (!isAuthenticated) {
+        console.log("⏳ Esperando autenticación...");
+        return;
+      }
+
+      if (!id) {
+        console.log("❌ No hay ID de proyecto");
+        return;
+      }
+
       setLoading(true);
       try {
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          throw new Error("No hay usuario autenticado");
+        }
+
+        console.log(
+          "📡 Cargando proyecto:",
+          id,
+          "para usuario:",
+          currentUser.uid,
+        );
+
         const projectRef = ref(db, `projects/${id}`);
         const snapshot = await get(projectRef);
+
         if (!snapshot.exists()) {
           toast({
             description: "Proyecto no encontrado",
@@ -88,7 +133,28 @@ const AppB = () => {
           });
           return;
         }
+
         const project = snapshot.val();
+
+        // 🔥 Verificar si el usuario tiene permiso para ver este proyecto
+        if (project.authorId !== currentUser.uid) {
+          // Verificar si el usuario está en userProjects
+          const userProjectRef = ref(
+            db,
+            `userProjects/${currentUser.uid}/${id}`,
+          );
+          const userProjectSnapshot = await get(userProjectRef);
+
+          if (!userProjectSnapshot.exists()) {
+            toast({
+              description: "No tienes permiso para ver este proyecto",
+              variant: "destructive",
+            });
+            return;
+          }
+        }
+
+        console.log("✅ Proyecto cargado:", project);
         setProjectData(project);
 
         // Seleccionar la página actual (selectedPage o la primera)
@@ -119,7 +185,7 @@ const AppB = () => {
           console.log(
             "📦 Elementos cargados:",
             JSON.parse(JSON.stringify(restoredElements)),
-          ); // Debug
+          );
           setDroppedElements(restoredElements);
           setUpdatedOElements(restoredElements);
           setGs(selectedPageData.stylesGlobal || []);
@@ -133,17 +199,18 @@ const AppB = () => {
           setWorkspaceState("");
         }
       } catch (error) {
-        console.error("Error al cargar el proyecto:", error);
+        console.error("❌ Error al cargar el proyecto:", error);
         toast({
-          description: "Error al cargar el proyecto",
+          description: `Error al cargar el proyecto: ${error.message}`,
           variant: "destructive",
         });
       } finally {
         setLoading(false);
       }
     };
+
     fetchProject();
-  }, [id, selectedPage]); // Dependencias: id y selectedPage para recargar si cambia de página (aunque la carga inicial solo con id)
+  }, [id, selectedPage, isAuthenticated]);
 
   // ========== Guardar proyecto en Firebase ==========
   const handleUpdateProject = async () => {

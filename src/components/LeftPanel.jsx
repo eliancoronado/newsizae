@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { FaSearch, FaBox, FaRegSquare } from "react-icons/fa";
 import { MdOutlineTextFields, MdOutlineInsertEmoticon } from "react-icons/md";
 import { PiSelectionAllBold, PiSelectionAllDuotone } from "react-icons/pi";
@@ -12,6 +12,20 @@ import ChatUI from "./ChatApp";
 
 const LeftPanel = ({ prid }) => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [userId, setUserId] = useState(null);
+
+  // Obtener userId desde localStorage al montar el componente
+  useEffect(() => {
+    try {
+      const storedUser = localStorage.getItem("user");
+      if (storedUser) {
+        const user = JSON.parse(storedUser);
+        setUserId(user.uid);
+      }
+    } catch (error) {
+      console.error("Error al obtener userId de localStorage:", error);
+    }
+  }, []);
 
   // Obtener estados y setters desde el store
   const {
@@ -98,13 +112,13 @@ const LeftPanel = ({ prid }) => {
   ];
 
   const filteredElements = elements.filter((element) =>
-    element.name.toLowerCase().includes(searchTerm.toLowerCase())
+    element.name.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const handleDragStart = (e, element) => {
     e.dataTransfer.setData(
       "application/reactflow",
-      JSON.stringify({ id: element.id, name: element.name })
+      JSON.stringify({ id: element.id, name: element.name }),
     );
     e.dataTransfer.effectAllowed = "move";
   };
@@ -234,7 +248,8 @@ const LeftPanel = ({ prid }) => {
       {mode === "ia" && <ChatUI />}
       {mode === "files" && (
         <ImageUploader
-          prid={prid}
+          userId={userId}
+          projectId={prid}
           imgSelected={imgSelected}
           setImgSelected={setImgSelected}
           url={url}
