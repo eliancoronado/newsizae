@@ -80,6 +80,7 @@ export default function Dashboard() {
     hasStories: false,
     hasUnseen: false,
   });
+  const [isAuthInitialized, setIsAuthInitialized] = useState(false); // 🔥 NUEVO ESTADO
   const [totalUnread, setTotalUnread] = useState(0);
   const { enterFullscreen } = useFullscreen();
   // Agrega estos estados
@@ -191,18 +192,40 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, [user]);
 
-  // Autenticación inicial y carga de datos desde Firebase
+    // 🔥 PRIMERO: Esperar a que Firebase Auth termine de inicializar
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log("Auth state changed:", firebaseUser?.uid);
-
+    // Escuchar el estado de autenticación
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      console.log("🔐 Auth state changed:", firebaseUser?.uid);
+      setIsAuthInitialized(true); // Marcar que la autenticación ya se inicializó
+      
       if (!firebaseUser) {
-        console.log("No user, navigating to login");
+        console.log("❌ No authenticated user");
+        // Limpiar localStorage si no hay usuario autenticado
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
         navigate("/");
+      }
+    });
+    
+    return () => unsubscribe();
+  }, [navigate]);
+
+  // 🔥 SEGUNDO: Cargar datos del usuario SOLO después de que Auth esté inicializado
+  useEffect(() => {
+    // No hacer nada hasta que la autenticación esté inicializada
+    if (!isAuthInitialized) return;
+    
+    const loadUserData = async () => {
+      const firebaseUser = auth.currentUser;
+      
+      if (!firebaseUser) {
+        console.log("⚠️ No user after auth initialization");
         setLoading(false);
         return;
       }
 
+      setLoading(true);
       try {
         // Obtener datos del usuario desde Firebase
         const userData = await getUserData(firebaseUser.uid);
@@ -214,7 +237,7 @@ export default function Dashboard() {
           return;
         }
 
-        console.log("User data from Firebase:", userData);
+        console.log("✅ User data from Firebase:", userData);
         setUser({
           uid: firebaseUser.uid,
           name: userData.name,
@@ -235,10 +258,10 @@ export default function Dashboard() {
       } finally {
         setLoading(false);
       }
-    });
+    };
 
-    return () => unsubscribe();
-  }, [navigate]);
+    loadUserData();
+  }, [isAuthInitialized, navigate]);
 
   // Cargar lista de amigos desde Firebase
   useEffect(() => {

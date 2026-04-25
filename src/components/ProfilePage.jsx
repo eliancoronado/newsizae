@@ -948,7 +948,7 @@ export default function ProfilePage() {
                     type="text"
                     value={nameText}
                     onChange={(e) => setNameText(e.target.value)}
-                    className="bg-[#3A3B3C] text-white p-2 rounded-lg text-2xl font-bold"
+                    className="bg-[#3A3B3C] text-white p-2 max-w-[150px] rounded-lg text-2xl font-bold"
                     autoFocus
                   />
                   <button
