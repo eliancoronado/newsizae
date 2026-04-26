@@ -22,6 +22,8 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
   const callDocRef = useRef(null);
   const currentCallId = useRef(null);
   const db = getDatabase();
+  const remoteStreamRef = useRef(new MediaStream());
+  const addedCandidates = useRef(new Set());
 
   const configuration = {
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -50,6 +52,7 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
     if (peerConnection.current) {
       peerConnection.current.close();
       peerConnection.current = null;
+      remoteStreamRef.current = new MediaStream();
     }
 
     // 🔥 No detener los streams aquí, dejar que React los limpie naturalmente
@@ -102,6 +105,7 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
     }
 
     try {
+      addedCandidates.current = new Set(); // ✅ AQUÍ
       setLlamando(true);
       console.log("📞 Iniciando llamada a:", otroUserId);
 
@@ -119,11 +123,10 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
       // 4. Manejar tracks remotos
       peerConnection.current.ontrack = (event) => {
         console.log("📡 Track remoto recibido:", event.track.kind);
-        const remote = new MediaStream();
         event.streams[0].getTracks().forEach((track) => {
-          remote.addTrack(track);
+          remoteStreamRef.current.addTrack(track);
         });
-        setRemoteStream(remote);
+        setRemoteStream(remoteStreamRef.current);
       };
 
       // 5. Manejar ICE candidates
@@ -168,11 +171,7 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
           if (!data) return;
 
           // Si hay respuesta y no tenemos remote description
-          if (
-            data.respuesta &&
-            peerConnection.current &&
-            !peerConnection.current.currentRemoteDescription
-          ) {
+          if (data.respuesta && peerConnection.current.signalingState !== "stable") {
             console.log("✅ Respuesta recibida del destinatario!");
             const answerDescription = new RTCSessionDescription(data.respuesta);
             await peerConnection.current.setRemoteDescription(
@@ -201,10 +200,13 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
         (snapshot) => {
           const candidatos = snapshot.val();
           if (candidatos && peerConnection.current) {
-            Object.values(candidatos).forEach((candidato) => {
-              peerConnection.current.addIceCandidate(
-                new RTCIceCandidate(candidato),
-              );
+            Object.entries(candidatos).forEach(([key, candidato]) => {
+              if (!addedCandidates.current.has(key)) {
+                addedCandidates.current.add(key);
+                peerConnection.current.addIceCandidate(
+                  new RTCIceCandidate(candidato),
+                );
+              }
             });
           }
         },
@@ -230,6 +232,7 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
     if (!llamadaEntrante) return;
 
     try {
+      addedCandidates.current = new Set(); // ✅ AQUÍ - Limpiar candidatos agregados para esta llamada
       console.log("✅ Aceptando llamada de:", llamadaEntrante.creador);
 
       // 1. Obtener medios
@@ -246,11 +249,10 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
       // 4. Manejar tracks remotos
       peerConnection.current.ontrack = (event) => {
         console.log("📡 Track remoto recibido:", event.track.kind);
-        const remote = new MediaStream();
         event.streams[0].getTracks().forEach((track) => {
-          remote.addTrack(track);
+          remoteStreamRef.current.addTrack(track);
         });
-        setRemoteStream(remote);
+        setRemoteStream(remoteStreamRef.current);
       };
 
       // 5. Manejar ICE candidates
@@ -289,10 +291,13 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
         (snapshot) => {
           const candidatos = snapshot.val();
           if (candidatos && peerConnection.current) {
-            Object.values(candidatos).forEach((candidato) => {
-              peerConnection.current.addIceCandidate(
-                new RTCIceCandidate(candidato),
-              );
+            Object.entries(candidatos).forEach(([key, candidato]) => {
+              if (!addedCandidates.current.has(key)) {
+                addedCandidates.current.add(key);
+                peerConnection.current.addIceCandidate(
+                  new RTCIceCandidate(candidato),
+                );
+              }
             });
           }
         },
