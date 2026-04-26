@@ -45,20 +45,22 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
 
   // 🔥 Limpiar llamada (como en la guía)
   const limpiarLlamada = () => {
+    console.log("🧹 Limpiando llamada...");
+
     if (peerConnection.current) {
       peerConnection.current.close();
       peerConnection.current = null;
     }
-    if (localStream) {
-      localStream.getTracks().forEach((track) => track.stop());
-      setLocalStream(null);
-    }
-    if (remoteStream) {
-      remoteStream.getTracks().forEach((track) => track.stop());
-      setRemoteStream(null);
-    }
+
+    // 🔥 No detener los streams aquí, dejar que React los limpie naturalmente
+    // Solo limpiar referencias
+    setLocalStream(null);
+    setRemoteStream(null);
     setEnLlamada(false);
     setLlamando(false);
+    setLlamadaEntrante(null);
+    callDocRef.current = null;
+    currentCallId.current = null;
   };
 
   // 🔥 Escuchar llamadas entrantes (como en la guía)
@@ -156,6 +158,8 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
         },
       });
 
+      // hooks/useWebRTC.js - Reemplaza la sección de "Escuchar RESPUESTA"
+
       // 8. Escuchar RESPUESTA (como en la guía)
       const unsubscribeRespuesta = onValue(
         ref(db, `llamadas/${callDoc.key}`),
@@ -174,15 +178,19 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
             await peerConnection.current.setRemoteDescription(
               answerDescription,
             );
+            console.log("🎉 Conexión establecida!");
             setLlamando(false);
             setEnLlamada(true);
+            // 🔥 NO cerrar el listener aquí
           }
 
-          if (data.estado === "finalizada") {
+          // 🔥 SOLO finalizar si el estado es finalizada (no limpiar antes)
+          if (data.estado === "finalizada" && enLlamada) {
             console.log("📴 Llamada finalizada por el otro usuario");
             limpiarLlamada();
             if (onCallEnd) onCallEnd();
             unsubscribeRespuesta();
+            unsubscribeCandidatos();
           }
         },
       );

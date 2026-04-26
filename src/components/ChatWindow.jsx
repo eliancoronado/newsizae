@@ -83,6 +83,26 @@ export default function ChatWindow({
     }, 2000);
   };
 
+  // En ChatWindow.jsx, dentro del componente, agrega:
+  useEffect(() => {
+    console.log("📺 remoteStream actualizado:", remoteStream);
+    if (remoteStream) {
+      console.log(
+        "🎥 Tracks en remoteStream:",
+        remoteStream.getTracks().length,
+      );
+      remoteStream.getTracks().forEach((track) => {
+        console.log(
+          `🎬 Track: kind=${track.kind}, enabled=${track.enabled}, muted=${track.muted}`,
+        );
+      });
+    }
+  }, [remoteStream]);
+
+  useEffect(() => {
+    console.log("🎥 localStream actualizado:", localStream);
+  }, [localStream]);
+
   useEffect(() => {
     const timeout = setTimeout(() => {
       if (messagesEndRef.current) {
