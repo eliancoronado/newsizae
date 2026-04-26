@@ -1,5 +1,5 @@
 // components/LlamadaUI.jsx
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   FaPhone,
   FaPhoneSlash,
@@ -9,6 +9,7 @@ import {
   FaMicrophoneSlash,
   FaTimes,
 } from "react-icons/fa";
+
 
 const LlamadaUI = ({
   enLlamada,
@@ -25,11 +26,13 @@ const LlamadaUI = ({
 }) => {
   const videoRef = useRef(null);
   const localVideoRef = useRef(null);
+  const [isRemoteMuted, setIsRemoteMuted] = useState(true);
 
   useEffect(() => {
     if (videoRef.current && remoteStream) {
       console.log("🎬 Asignando remoteStream al video element");
       videoRef.current.srcObject = remoteStream;
+      videoRef.current.muted = true; // 🔥 El video remoto debe estar muteado inicialmente
       videoRef.current
         .play()
         .catch((e) => console.log("Error playing remote video:", e));
@@ -40,11 +43,20 @@ const LlamadaUI = ({
     if (localVideoRef.current && localStream) {
       console.log("🎬 Asignando localStream al video element");
       localVideoRef.current.srcObject = localStream;
+      localVideoRef.current.muted = true; // El video local siempre muteado para evitar eco
       localVideoRef.current
         .play()
         .catch((e) => console.log("Error playing local video:", e));
     }
   }, [localStream]);
+
+   const handleUnmuteRemote = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = false;
+      setIsRemoteMuted(false);
+      console.log("🔊 Audio remoto activado manualmente");
+    }
+  };
 
   if (!llamando && !enLlamada) return null;
 
@@ -58,6 +70,17 @@ const LlamadaUI = ({
           playsInline
           className="w-full h-full object-cover"
         />
+
+         {/* Botón para activar audio remoto */}
+        {isRemoteMuted && remoteStream && (
+          <button
+            onClick={handleUnmuteRemote}
+            className="absolute bottom-24 left-1/2 transform -translate-x-1/2 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-full flex items-center gap-2 z-10"
+          >
+            <FaMicrophoneSlash />
+            Activar audio
+          </button>
+        )}
 
         {/* Video local (pip en esquina) */}
         <div className="absolute bottom-4 right-4 w-32 h-48 rounded-xl overflow-hidden shadow-lg border-2 border-white/50">

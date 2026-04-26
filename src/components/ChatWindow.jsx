@@ -95,6 +95,10 @@ export default function ChatWindow({
         console.log(
           `🎬 Track: kind=${track.kind}, enabled=${track.enabled}, muted=${track.muted}`,
         );
+        // 🔥 Forzar enabled en los tracks si es necesario
+        if (!track.enabled) {
+          track.enabled = true;
+        }
       });
     }
   }, [remoteStream]);
