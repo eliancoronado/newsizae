@@ -27,23 +27,39 @@ const LlamadaUI = ({
   const localVideoRef = useRef(null);
   const [isRemoteMuted, setIsRemoteMuted] = useState(true);
 
-  useEffect(async () => {
-    if (videoRef.current && remoteStream) {
-      console.log("🎬 Asignando remoteStream al video element");
-      videoRef.current.srcObject = remoteStream;
-      videoRef.current.muted = false;
-      await videoRef.current.play();
-    }
+  useEffect(() => {
+    const setupVideo = async () => {
+      if (videoRef.current && remoteStream) {
+        console.log("🎬 Asignando remoteStream al video element");
+        videoRef.current.srcObject = remoteStream;
+        videoRef.current.muted = false;
+
+        try {
+          await videoRef.current.play();
+        } catch (e) {
+          console.log("Error playing remote video:", e);
+        }
+      }
+    };
+
+    setupVideo();
   }, [remoteStream]);
 
-  useEffect(async () => {
-    if (localVideoRef.current && localStream) {
-      console.log("🎬 Asignando localStream al video element");
-      localVideoRef.current.srcObject = localStream;
-      await localVideoRef.current
-        .play()
-        .catch((e) => console.log("Error playing local video:", e));
-    }
+  useEffect(() => {
+    const setupLocalVideo = async () => {
+      if (localVideoRef.current && localStream) {
+        console.log("🎬 Asignando localStream al video element");
+        localVideoRef.current.srcObject = localStream;
+
+        try {
+          await localVideoRef.current.play();
+        } catch (e) {
+          console.log("Error playing local video:", e);
+        }
+      }
+    };
+
+    setupLocalVideo();
   }, [localStream]);
 
   const handleUnmuteRemote = () => {

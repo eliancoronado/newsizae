@@ -139,12 +139,20 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
 
       // 4. Manejar tracks remotos
       peerConnection.current.ontrack = (event) => {
-        console.log("📡 STREAM remoto recibido COMPLETO");
-
         const [stream] = event.streams;
 
-        if (stream) {
-          setRemoteStream(stream); // ✅ USAR DIRECTO
+        if (!stream) return;
+
+        const tracks = stream.getTracks();
+
+        const hayMediaReal = tracks.some((track) => !track.muted);
+
+        console.log("🎥 ¿Media real?:", hayMediaReal);
+
+        if (hayMediaReal) {
+          setRemoteStream(stream);
+        } else {
+          console.log("⏳ Esperando que el stream tenga datos...");
         }
       };
 
@@ -288,12 +296,20 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
 
       // 4. Manejar tracks remotos
       peerConnection.current.ontrack = (event) => {
-        console.log("📡 STREAM remoto recibido COMPLETO");
-
         const [stream] = event.streams;
 
-        if (stream) {
-          setRemoteStream(stream); // ✅ USAR DIRECTO
+        if (!stream) return;
+
+        const tracks = stream.getTracks();
+
+        const hayMediaReal = tracks.some((track) => !track.muted);
+
+        console.log("🎥 ¿Media real?:", hayMediaReal);
+
+        if (hayMediaReal) {
+          setRemoteStream(stream);
+        } else {
+          console.log("⏳ Esperando que el stream tenga datos...");
         }
       };
       peerConnection.current.oniceconnectionstatechange = () => {
