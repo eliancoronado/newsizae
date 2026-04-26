@@ -10,7 +10,6 @@ import {
   FaTimes,
 } from "react-icons/fa";
 
-
 const LlamadaUI = ({
   enLlamada,
   llamando,
@@ -32,10 +31,10 @@ const LlamadaUI = ({
     if (videoRef.current && remoteStream) {
       console.log("🎬 Asignando remoteStream al video element");
       videoRef.current.srcObject = remoteStream;
-      videoRef.current.muted = true; // 🔥 El video remoto debe estar muteado inicialmente
-      videoRef.current
-        .play()
-        .catch((e) => console.log("Error playing remote video:", e));
+      videoRef.current.muted = false;
+      videoRef.current.onloadedmetadata = () => {
+        videoRef.current.play().catch(() => {});
+      };
     }
   }, [remoteStream]);
 
@@ -43,14 +42,13 @@ const LlamadaUI = ({
     if (localVideoRef.current && localStream) {
       console.log("🎬 Asignando localStream al video element");
       localVideoRef.current.srcObject = localStream;
-      localVideoRef.current.muted = true; // El video local siempre muteado para evitar eco
       localVideoRef.current
         .play()
         .catch((e) => console.log("Error playing local video:", e));
     }
   }, [localStream]);
 
-   const handleUnmuteRemote = () => {
+  const handleUnmuteRemote = () => {
     if (videoRef.current) {
       videoRef.current.muted = false;
       setIsRemoteMuted(false);
@@ -71,7 +69,7 @@ const LlamadaUI = ({
           className="w-full h-full object-cover"
         />
 
-         {/* Botón para activar audio remoto */}
+        {/* Botón para activar audio remoto */}
         {isRemoteMuted && remoteStream && (
           <button
             onClick={handleUnmuteRemote}

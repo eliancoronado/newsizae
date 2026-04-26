@@ -22,7 +22,6 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
   const callDocRef = useRef(null);
   const currentCallId = useRef(null);
   const db = getDatabase();
-  const remoteStreamRef = useRef(new MediaStream());
   const addedCandidates = useRef(new Set());
 
   const configuration = {
@@ -52,7 +51,6 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
     if (peerConnection.current) {
       peerConnection.current.close();
       peerConnection.current = null;
-      remoteStreamRef.current = new MediaStream();
     }
 
     // 🔥 No detener los streams aquí, dejar que React los limpie naturalmente
@@ -122,11 +120,13 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
 
       // 4. Manejar tracks remotos
       peerConnection.current.ontrack = (event) => {
-        console.log("📡 Track remoto recibido:", event.track.kind);
-        event.streams[0].getTracks().forEach((track) => {
-          remoteStreamRef.current.addTrack(track);
-        });
-        setRemoteStream(remoteStreamRef.current);
+        console.log("📡 STREAM remoto recibido COMPLETO");
+
+        const [stream] = event.streams;
+
+        if (stream) {
+          setRemoteStream(stream); // ✅ USAR DIRECTO
+        }
       };
 
       // 5. Manejar ICE candidates
@@ -171,7 +171,10 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
           if (!data) return;
 
           // Si hay respuesta y no tenemos remote description
-          if (data.respuesta && peerConnection.current.signalingState !== "stable") {
+          if (
+            data.respuesta &&
+            peerConnection.current.signalingState !== "stable"
+          ) {
             console.log("✅ Respuesta recibida del destinatario!");
             const answerDescription = new RTCSessionDescription(data.respuesta);
             await peerConnection.current.setRemoteDescription(
@@ -248,11 +251,13 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
 
       // 4. Manejar tracks remotos
       peerConnection.current.ontrack = (event) => {
-        console.log("📡 Track remoto recibido:", event.track.kind);
-        event.streams[0].getTracks().forEach((track) => {
-          remoteStreamRef.current.addTrack(track);
-        });
-        setRemoteStream(remoteStreamRef.current);
+        console.log("📡 STREAM remoto recibido COMPLETO");
+
+        const [stream] = event.streams;
+
+        if (stream) {
+          setRemoteStream(stream); // ✅ USAR DIRECTO
+        }
       };
 
       // 5. Manejar ICE candidates
