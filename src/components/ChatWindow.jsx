@@ -46,7 +46,7 @@ export default function ChatWindow({
     llamando,
     llamadaEntrante,
     localStream,
-    remoteStreamVideo,
+    remoteStream,
     isVideoEnabled,
     isAudioEnabled,
     toggleVideo,
@@ -423,7 +423,7 @@ export default function ChatWindow({
           colgarLlamada={colgarLlamada}
           otroUsuarioNombre={friendName}
           localStream={localStream}
-          remoteStreamVideo={remoteStreamVideo}
+          remoteStream={remoteStream}
           isVideoEnabled={isVideoEnabled}
           isAudioEnabled={isAudioEnabled}
           toggleVideo={toggleVideo}

@@ -16,7 +16,7 @@ const LlamadaUI = ({
   colgarLlamada, 
   otroUsuarioNombre,
   localStream,
-  remoteStreamVideo,
+  remoteStream,
   isVideoEnabled,
   isAudioEnabled,
   toggleVideo,
@@ -34,8 +34,8 @@ const LlamadaUI = ({
           autoPlay
           playsInline
           ref={video => {
-            if (video && remoteStreamVideo) {
-              video.srcObject = remoteStreamVideo;
+            if (video && remoteStream) {
+              video.srcObject = remoteStream;
             }
           }}
           className="w-full h-full object-cover"
