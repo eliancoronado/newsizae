@@ -25,15 +25,11 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
   const addedCandidates = useRef(new Set());
 
   const configuration = {
-    iceServers: [
-      { urls: "stun:stun.l.google.com:19302" },
-      {
-        urls: "turn:openrelay.metered.ca:80",
-        username: "openrelayproject",
-        credential: "openrelayproject",
-      },
-    ],
-  };
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ],
+};
 
   // 🔥 Obtener medios (como en la guía)
   const obtenerMedios = async () => {
@@ -139,20 +135,12 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
 
       // 4. Manejar tracks remotos
       peerConnection.current.ontrack = (event) => {
+        console.log("📡 STREAM remoto recibido");
+
         const [stream] = event.streams;
 
-        if (!stream) return;
-
-        const tracks = stream.getTracks();
-
-        const hayMediaReal = tracks.some((track) => !track.muted);
-
-        console.log("🎥 ¿Media real?:", hayMediaReal);
-
-        if (hayMediaReal) {
-          setRemoteStream(stream);
-        } else {
-          console.log("⏳ Esperando que el stream tenga datos...");
+        if (stream) {
+          setRemoteStream(stream); // 🔥 SIEMPRE asignar
         }
       };
 
@@ -296,22 +284,15 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
 
       // 4. Manejar tracks remotos
       peerConnection.current.ontrack = (event) => {
+        console.log("📡 STREAM remoto recibido");
+
         const [stream] = event.streams;
 
-        if (!stream) return;
-
-        const tracks = stream.getTracks();
-
-        const hayMediaReal = tracks.some((track) => !track.muted);
-
-        console.log("🎥 ¿Media real?:", hayMediaReal);
-
-        if (hayMediaReal) {
-          setRemoteStream(stream);
-        } else {
-          console.log("⏳ Esperando que el stream tenga datos...");
+        if (stream) {
+          setRemoteStream(stream); // 🔥 SIEMPRE asignar
         }
       };
+
       peerConnection.current.oniceconnectionstatechange = () => {
         console.log(
           "🧊 ICE estado:",
