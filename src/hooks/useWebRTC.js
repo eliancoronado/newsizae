@@ -25,8 +25,14 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
   const addedCandidates = useRef(new Set());
 
   const configuration = {
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-    iceCandidatePoolSize: 10,
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      {
+        urls: "turn:openrelay.metered.ca:80",
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      },
+    ],
   };
 
   // 🔥 Obtener medios (como en la guía)
@@ -113,6 +119,19 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
       // 2. Crear peer connection
       peerConnection.current = new RTCPeerConnection(configuration);
 
+      peerConnection.current.onconnectionstatechange = () => {
+        console.log(
+          "🌐 Estado conexión:",
+          peerConnection.current.connectionState,
+        );
+
+        if (peerConnection.current.connectionState === "connected") {
+          console.log("✅ CONEXIÓN REAL ESTABLECIDA");
+
+          // 👉 AQUÍ ya puedes confiar en audio/video
+        }
+      };
+
       // 3. Agregar tracks locales
       stream.getTracks().forEach((track) => {
         peerConnection.current.addTrack(track, stream);
@@ -127,6 +146,13 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
         if (stream) {
           setRemoteStream(stream); // ✅ USAR DIRECTO
         }
+      };
+
+      peerConnection.current.oniceconnectionstatechange = () => {
+        console.log(
+          "🧊 ICE estado:",
+          peerConnection.current.iceConnectionState,
+        );
       };
 
       // 5. Manejar ICE candidates
@@ -244,6 +270,17 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
       // 2. Crear peer connection
       peerConnection.current = new RTCPeerConnection(configuration);
 
+      peerConnection.current.onconnectionstatechange = () => {
+        console.log(
+          "🌐 Estado conexión:",
+          peerConnection.current.connectionState,
+        );
+
+        if (peerConnection.current.connectionState === "connected") {
+          console.log("✅ CONEXIÓN REAL ESTABLECIDA");
+        }
+      };
+
       // 3. Agregar tracks locales
       stream.getTracks().forEach((track) => {
         peerConnection.current.addTrack(track, stream);
@@ -258,6 +295,12 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
         if (stream) {
           setRemoteStream(stream); // ✅ USAR DIRECTO
         }
+      };
+      peerConnection.current.oniceconnectionstatechange = () => {
+        console.log(
+          "🧊 ICE estado:",
+          peerConnection.current.iceConnectionState,
+        );
       };
 
       // 5. Manejar ICE candidates
