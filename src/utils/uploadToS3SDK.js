@@ -354,3 +354,42 @@ export const uploadVideoToS3 = async (file, onProgress) => {
     throw new Error(`Error al subir el video: ${error.message}`);
   }
 };
+
+// Subir archivo generado (HTML, CSS, etc.) a S3
+export const uploadGeneratedFileToS3 = async (file, key, onProgress) => {
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+
+    const uploadParams = {
+      Bucket: S3_BUCKET,
+      Key: key,
+      Body: arrayBuffer,
+      ContentType: file.type,
+      ACL: "public-read",
+    };
+
+    const command = new PutObjectCommand(uploadParams);
+
+    if (onProgress) {
+      let progress = 0;
+      const interval = setInterval(() => {
+        progress += 10;
+        onProgress(Math.min(progress, 90));
+        if (progress >= 90) clearInterval(interval);
+      }, 500);
+
+      await s3Client.send(command);
+      clearInterval(interval);
+      onProgress(100);
+    } else {
+      await s3Client.send(command);
+    }
+
+    const publicUrl = `https://${S3_BUCKET}.s3.amazonaws.com/${key}`;
+    console.log("✅ Archivo subido exitosamente:", publicUrl);
+    return publicUrl;
+  } catch (error) {
+    console.error("Error uploading generated file:", error);
+    throw error;
+  }
+};

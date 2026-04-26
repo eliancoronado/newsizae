@@ -23,10 +23,13 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
+import {Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle} from "./ui/card";
 import { ref, set, get } from "firebase/database";
+import { QRCodeCanvas } from "qrcode.react";
 import { db } from "../firebase";
 import { auth } from "../firebase";
 import { toast } from "sonner";
+import { FaArrowLeft, FaArrowRight } from "react-icons/fa6";
 
 const CentralPanel = ({
   onUpdate,
@@ -34,6 +37,8 @@ const CentralPanel = ({
   renderElement,
   contextMenu,
   setContextMenu,
+  setDeviceShow,
+  urlqr
 }) => {
   const [color, setColor] = useState("dfdfdf");
   const [backgroundColor, setBackgroundColor] = useState("#dfdfdf");
@@ -49,6 +54,7 @@ const CentralPanel = ({
   const [isDragging, setIsDragging] = useState(false);
   const [position, setPosition] = useState({ x: -383, y: -72 });
   const [isHandTool, setIsHandTool] = useState(false);
+  const [qrcode, setQrCode] = useState(false);
   const containerRef = useRef(null);
 
   const {
@@ -401,6 +407,104 @@ const CentralPanel = ({
         />
       </div>
 
+      {qrcode && (
+        <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-40 rounded-xl shadow-lg w-full max-w-[900px]">
+          {/* Contenedor de carrusel */}
+          <div className="relative">
+            {/* Botón izquierda */}
+            <button
+              onClick={() => {
+                const container = document.getElementById("qr-cards-container");
+                container.scrollBy({ left: -300, behavior: "smooth" });
+              }}
+              className="absolute left-0 top-1/2 -translate-y-1/2 bg-gray-200 text-black hover:bg-gray-300 p-2 rounded-full shadow z-10"
+            >
+              <FaArrowLeft />
+            </button>
+
+            {/* Lista horizontal */}
+            <div
+              id="qr-cards-container"
+              className="flex gap-4 overflow-x-auto scroll-smooth px-10"
+              style={{ scrollbarWidth: "none" }}
+            >
+              {[
+                {
+                  title: "Escanea el QR",
+                  description:
+                    "Tendrás una vista previa de tu proyecto para prueba y error",
+                  url: urlqr,
+                },
+              ].map((card, index) => (
+                <Card key={index} className="w-72 flex-shrink-0">
+                  <CardHeader>
+                    <CardTitle>{card.title}</CardTitle>
+                    <CardDescription>{card.description}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex justify-center">
+                    <QRCodeCanvas
+                      value={card.url}
+                      size={100}
+                      bgColor={"#ffffff"}
+                      fgColor={"#000000"}
+                      level={"H"}
+                      includeMargin={true}
+                    />
+                  </CardContent>
+                  <CardFooter className="flex items-center justify-end gap-2">
+                    <Button
+                      onClick={() => {
+                        if (
+                          navigator.clipboard &&
+                          navigator.clipboard.writeText
+                        ) {
+                          navigator.clipboard
+                            .writeText(card.url)
+                            .then(() =>
+                              console.log("URL copiada al portapapeles"),
+                            )
+                            .catch((err) =>
+                              alert("Error al copiar la URL: " + err),
+                            );
+                        } else {
+                          const tempInput = document.createElement("input");
+                          tempInput.value = card.url;
+                          document.body.appendChild(tempInput);
+                          tempInput.select();
+                          document.execCommand("copy");
+                          document.body.removeChild(tempInput);
+                          console.log("URL copiada con método alternativo");
+                        }
+                      }}
+                    >
+                      Copiar URL
+                    </Button>
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+
+            {/* Botón derecha */}
+            <button
+              onClick={() => {
+                const container = document.getElementById("qr-cards-container");
+                container.scrollBy({ left: 300, behavior: "smooth" });
+              }}
+              className="absolute right-0 top-1/2 -translate-y-1/2 bg-gray-200 text-black hover:bg-gray-300 p-2 rounded-full shadow z-10"
+            >
+              <FaArrowRight />
+            </button>
+          </div>
+
+          {/* Botón cerrar */}
+          <div className="w-full flex justify-center mt-4">
+            <Button variant="destructive" onClick={() => setQrCode(false)}>
+              Cerrar
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Controles de escala y menú */}
       <div className="absolute z-30 top-1 left-1 h-8 flex gap-1">
         <button
@@ -453,6 +557,12 @@ const CentralPanel = ({
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleSave}>Guardar</DropdownMenuItem>
               <DropdownMenuItem onClick={handleCopy}>Copiar</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setQrCode(true)}>
+                Abrir link dev
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setDeviceShow(prev => !prev)}>
+                Abrir emulador
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={handlePaste}>Pegar</DropdownMenuItem>
               <Dialog>
                 <DialogTrigger asChild>

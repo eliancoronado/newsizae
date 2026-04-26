@@ -15,6 +15,9 @@ import { db } from "../firebase";
 import { auth } from "../firebase";
 import { useFullscreen } from "../hooks/useFullscreen";
 import { onAuthStateChanged } from "firebase/auth";
+import { generateAndSaveProject } from "../utils/htmlGenerator";
+import { uploadGeneratedFileToS3 } from "../utils/uploadToS3SDK";
+import DeviceWindow from "./DeviceWindow";
 
 const CustomCodeEditor = React.lazy(() => import("./CodeEditor"));
 
@@ -59,6 +62,9 @@ const AppB = () => {
   const [gs, setGs] = useState([]);
   const { enterFullscreen } = useFullscreen();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [deviceShow, setDeviceShow] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(""); // 🔥 Estado para la URL de preview
+  
   const navigate = useNavigate();
 
   // 🔥 Verificar autenticación al cargar
@@ -69,7 +75,7 @@ const AppB = () => {
         setIsAuthenticated(true);
       } else {
         console.log("❌ No hay usuario autenticado");
-        navigate("/")
+        navigate("/");
         setIsAuthenticated(false);
         toast({
           description: "Debes iniciar sesión para acceder a este proyecto",
@@ -157,8 +163,12 @@ const AppB = () => {
         console.log("✅ Proyecto cargado:", project);
         setProjectData(project);
 
-        // Seleccionar la página actual (selectedPage o la primera)
+        // 🔥 Generar URL de preview para la página actual (si existe)
         const currentPageName = selectedPage || "index";
+        const previewKey = `users/${currentUser.uid}/projects/${id}/pages/${currentPageName}.html`;
+        const previewUrlGenerated = `https://mis-proyectos-sizae-app.s3.amazonaws.com/${previewKey}`;
+        setPreviewUrl(previewUrlGenerated);
+
         let selectedPageData = project.pages?.find(
           (p) => p.name === currentPageName,
         );
@@ -211,6 +221,51 @@ const AppB = () => {
 
     fetchProject();
   }, [id, selectedPage, isAuthenticated]);
+
+  // 🔥 Actualizar preview URL cuando cambia la página seleccionada
+  useEffect(() => {
+    if (!isAuthenticated || !id) return;
+    const currentUser = auth.currentUser;
+    if (currentUser && selectedPage) {
+      const previewKey = `users/${currentUser.uid}/projects/${id}/pages/${selectedPage}.html`;
+      const newPreviewUrl = `https://mis-proyectos-sizae-app.s3.amazonaws.com/${previewKey}`;
+      setPreviewUrl(newPreviewUrl);
+    }
+  }, [selectedPage, id, isAuthenticated]);
+
+  // Función para remover estilos globales recursivamente (para preview)
+  const removeGlobalStylesRecursively = (elements, globalStyles) => {
+    if (!elements || !Array.isArray(elements)) return [];
+
+    return elements.map((element) => {
+      const newElement = { ...element };
+
+      if (newElement.iconClass) {
+        const globalStyle = globalStyles.find(
+          (style) => style.name === newElement.iconClass,
+        );
+
+        if (globalStyle && globalStyle.styles) {
+          const updatedStyles = { ...newElement.styles };
+          Object.keys(globalStyle.styles).forEach((key) => {
+            if (updatedStyles[key] === globalStyle.styles[key]) {
+              delete updatedStyles[key];
+            }
+          });
+          newElement.styles = updatedStyles;
+        }
+      }
+
+      if (newElement.children && newElement.children.length > 0) {
+        newElement.children = removeGlobalStylesRecursively(
+          newElement.children,
+          globalStyles,
+        );
+      }
+
+      return newElement;
+    });
+  };
 
   // ========== Guardar proyecto en Firebase ==========
   const handleUpdateProject = async () => {
@@ -291,8 +346,61 @@ const AppB = () => {
     }
   };
 
+  // Función de preview (genera y abre el HTML en una nueva pestaña)
+  const handlePreview = async () => {
+    if (!selectedPage) {
+      toast.error("Selecciona una página para previsualizar");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("No autenticado");
+
+      // Remover estilos globales de los elementos (para preview sin duplicados)
+      const copyDroppedElements = JSON.parse(JSON.stringify(droppedElements));
+      const cleanedElements = removeGlobalStylesRecursively(
+        copyDroppedElements,
+        gs,
+      );
+
+      // Generar y guardar en S3
+      const result = await generateAndSaveProject(
+        currentUser.uid,
+        id,
+        selectedPage,
+        cleanedElements,
+        gs,
+        blocklyCode || "",
+        (progress) => {
+          console.log(`📤 Generando HTML: ${progress}%`);
+        },
+      );
+
+      // 🔥 Actualizar la URL de preview con el nuevo archivo generado
+      setPreviewUrl(result.url);
+
+      // Abrir en nueva pestaña
+      //window.open(result.url, "_blank");
+      toast.success("Vista previa generada correctamente");
+    } catch (error) {
+      console.error("Error en preview:", error);
+      toast.error("Error al generar la vista previa");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Actualizar handlePreviewAndUpdate
   const handlePreviewAndUpdate = async () => {
-    await handleUpdateProject();
+    try {
+      await handleUpdateProject();
+      await handlePreview();
+    } catch (error) {
+      console.error("Error durante el proceso:", error);
+      toast.error("Error al guardar el proyecto");
+    }
   };
 
   const handleGenerateCode = (code, state) => {
@@ -346,6 +454,8 @@ const AppB = () => {
             renderElement={renderElement}
             contextMenu={contextMenu}
             setContextMenu={setContextMenu}
+            setDeviceShow={setDeviceShow}
+            urlqr={previewUrl}
           />
           <RightPanel
             handleStyleChange={handleStyleChange}
@@ -362,6 +472,9 @@ const AppB = () => {
             prid={id}
             gs={gs}
           />
+          {deviceShow && (
+            <DeviceWindow url={previewUrl} width={430} height={932} dpi={0.4} />
+          )}
         </div>
       )}
     </div>

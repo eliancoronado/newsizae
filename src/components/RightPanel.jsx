@@ -94,7 +94,6 @@ const RightPanel = ({
 
   const handleGradientChange = useCallback(
     (gradient) => {
-      console.log(gradient);
       handleStyleChange("background", gradient);
     },
     [handleStyleChange]
