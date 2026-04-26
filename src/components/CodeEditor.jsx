@@ -373,29 +373,17 @@ const CustomCodeEditor = ({
     } else if (propValue && propValue.trim() !== "") {
       setEditorValue(propValue);
     } else {
-      setEditorValue(`// Bienvenido a Sizae Code
+      setEditorValue(`// Bienvenido a Sizae Code Zone
 // Los IDs de tus elementos aparecerán automáticamente
 // cuando escribas dentro de las comillas:
 
 // ✅ CORRECTO - Así funciona:
-const elemento = document.getElementById("")
+const elemento = document.elemento("")
 // Ahora escribe dentro de las comillas → ""
 
 // ❌ INCORRECTO - No uses # dentro de getElementById:
-// document.getElementById("#") // Esto NO funciona
-
-// IDs disponibles: ${collectElementIds(elements).join(", ") || "ninguno"}
-
-function saludar(nombre) {
-    return "Hola " + nombre;
-}
-
-console.log(saludar("Mundo"));
-
-// PRUEBA ESTO:
-// 1. Borra el # de la línea de abajo
-// 2. Escribe dentro de las comillas
-document.getElementById("")`);
+// document.elemento("#") // Esto NO funciona
+`);
     }
   }, [workspaceState, propValue, elements]);
 

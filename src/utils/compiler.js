@@ -37,8 +37,7 @@ class Lexer {
       }
 
       const parts = content.match(
-        /"[^"]*"|\d*\.\d+|\d+|\w+|==|!=|<=|>=|\[|\]|\{|\}|,|;|:|\(|\)|\+|\-|\*|\/|>|<|=|\./g,
-        //                                                                                          ^^^ Agregar el punto
+        /"[^"]*"|\d*\.\d+|\d+|\w+|==|!=|<=|>=|\[|\]|\{|\}|,|;|:|\(|\)|\+|\-|\*|\/|>|<|=/g,
       );
 
       if (!parts) continue;
@@ -171,28 +170,32 @@ class Parser {
 
     // Verificar si es una asignación a una propiedad con THIS
     if (t.type === "THIS") {
+      // Guardar posición actual
       const currentPos = this.pos;
+
+      // Avanzar para ver si sigue un . y un identificador
       this.next(); // consumir THIS
       if (this.peek().value === ".") {
         this.next(); // consumir .
-        const prop = this.next();
+        const prop = this.next(); // consumir el identificador
+
         if (this.peek().value === "=") {
-          this.pos = currentPos;
+          // Es una asignación a this.propiedad
+          this.pos = currentPos; // Retroceder
           return this.thisAssignment();
         }
       }
+
+      // Si no era una asignación, retroceder
       this.pos = currentPos;
     }
 
-    // 🔥 DETECTAR TODOS LOS CASOS DE IDENTIFICADOR EN UN SOLO BLOQUE
+    // 🔥 Detectar obj.prop = valor
     if (t.type === "IDENTIFIER") {
       const startPos = this.pos;
+
       const expr = this.expression();
 
-      console.log("Expresión parseada:", JSON.stringify(expr, null, 2));
-      console.log("Siguiente token:", this.peek());
-
-      // Caso 1: Asignación (variable = valor  o  objeto.prop = valor)
       if (this.peek().value === "=") {
         this.next(); // consumir =
 
@@ -214,14 +217,16 @@ class Parser {
         }
       }
 
-      // Caso 2: Evento (algo.algo(...): )
+      this.pos = startPos;
+    }
+
+    // 🔥 Detectar evento tipo: algo.algo(...):
+    if (t.type === "IDENTIFIER") {
+      const startPos = this.pos;
+      const expr = this.expression();
+
       if (this.peek().value === ":") {
         this.next(); // consumir :
-
-        // 🔥 NUEVO: Saltar NEWLINEs opcionales antes del bloque
-        while (this.peek().type === "NEWLINE") {
-          this.next();
-        }
 
         return {
           type: "Event",
@@ -230,7 +235,14 @@ class Parser {
         };
       }
 
-      // Caso 3: Llamada como statement (algo.algo(...))
+      this.pos = startPos;
+    }
+
+    // 🔥 Permitir llamadas como statement
+    if (t.type === "IDENTIFIER") {
+      const startPos = this.pos;
+      const expr = this.expression();
+
       if (expr.type === "Call") {
         return {
           type: "ExpressionStatement",
@@ -238,9 +250,7 @@ class Parser {
         };
       }
 
-      // Si no es ninguno de los casos anteriores, error
       this.pos = startPos;
-      throw new Error("Declaración inválida línea " + t.line);
     }
 
     throw new Error("Declaración inválida línea " + t.line);
@@ -784,7 +794,7 @@ ${node.body.map((n) => this.generate(n)).join("\n")}
         return `${calleeName}(${args})`;
 
       case "Get":
-        const obj = this.generate(node.object).trim();
+        const obj = this.generate(node.object);
 
         if (obj === "documento") {
           if (node.name === "elemento") return "document.getElementById";
@@ -1028,11 +1038,9 @@ ${node.body.map((n) => this.generate(n)).join("\n")}
         return `${obj}.${node.name}`;
 
       case "Variable":
-        // Limpiar cualquier salto de línea que pueda haber
-        let varName = node.name;
-        if (varName === "fecha") return "Date";
-        if (varName === "JSONE") return "JSON";
-        return varName.trim(); // Asegurar que no hay whitespace
+        if (node.name === "fecha") return "Date";
+        if (node.name === "JSONE") return "JSON";
+        return node.name;
 
       case "Literal":
         return JSON.stringify(node.value);

@@ -250,7 +250,7 @@ const AppB = () => {
         name: selectedPage,
         elements: sanitizeElements(droppedElements), // 🔥 Asegurar que children se guarde
         code: blocklyCode,
-        state: workspaceState,
+        state: workspaceState || {},
         stylesGlobal: gs,
       };
 

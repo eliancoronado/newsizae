@@ -55,7 +55,7 @@ const SidebarB = () => {
           <MdOutlineStyle className="text-2xl text-[#FFD966]" />
         </div>
 
-        {projectData?.lan === "waskart" ? (
+        {projectData?.language === "waskart" ? (
           <div
             className="w-full py-4 cursor-pointer hover:bg-[rgba(255,255,255,0.3)] flex items-center justify-center"
             onClick={() => setMode("code")}
