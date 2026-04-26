@@ -1,80 +1,111 @@
 // components/LlamadaUI.jsx
-import React, { useState, useEffect } from "react";
-import { useWebRTC } from "../hooks/useWebRTC";
+import React from 'react';
+import { 
+  FaPhone, 
+  FaPhoneSlash, 
+  FaVideo, 
+  FaVideoSlash, 
+  FaMicrophone, 
+  FaMicrophoneSlash,
+  FaTimes
+} from 'react-icons/fa';
 
-const LlamadaUI = ({
-  usuarioActual,
-  otroUsuario,
+const LlamadaUI = ({ 
+  enLlamada, 
+  llamando, 
+  colgarLlamada, 
   otroUsuarioNombre,
-  onClose, // 👈 Nuevo prop para cerrar el panel
+  localStream,
+  remoteStreamVideo,
+  isVideoEnabled,
+  isAudioEnabled,
+  toggleVideo,
+  toggleAudio,
+  onClose 
 }) => {
-  const [mostrarLlamada, setMostrarLlamada] = useState(true); // Cambiar a true por defecto
-  const { iniciarLlamada, colgarLlamada, enLlamada, llamando } = useWebRTC(
-    usuarioActual,
-    otroUsuario,
-  );
-
-  // Cerrar el panel cuando la llamada termina
-  useEffect(() => {
-    if (!enLlamada && !llamando && !mostrarLlamada) {
-      // Si no hay llamada activa y el panel está cerrado, llamar a onClose
-      const timer = setTimeout(() => {
-        onClose();
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [enLlamada, llamando, mostrarLlamada]);
-
+  
+  if (!llamando && !enLlamada) return null;
+  
   return (
-    // Modal overlay para mejor experiencia
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-      <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-80">
-        <div className="flex flex-col items-center space-y-4">
-          <div className="text-center">
-            <div className="text-white font-semibold text-lg">
-              {enLlamada
-                ? "📞 En llamada"
-                : llamando
-                  ? "🔔 Llamando..."
-                  : "Llamada de voz"}
-            </div>
-            <div className="text-gray-400 text-sm mt-1">
-              {enLlamada
-                ? `Hablando con ${otroUsuarioNombre}`
-                : llamando
-                  ? `Llamando a ${otroUsuarioNombre}`
-                  : `${otroUsuarioNombre}`}
-            </div>
-          </div>
-
-          {/* Control de la llamada */}
-          {!enLlamada && !llamando ? (
-            <div className="flex space-x-3 w-full">
-              <button
-                onClick={() => {
-                  iniciarLlamada();
-                  setMostrarLlamada(false);
-                }}
-                className="bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-full flex-1"
-              >
-                Llamar
-              </button>
-              <button
-                onClick={onClose}
-                className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-full flex-1"
-              >
-                Cancelar
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={colgarLlamada} // <-- NUEVO NOMBRE
-              className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-full text-sm"
-            >
-              Colgar
-            </button>
-          )}
+    <div className="fixed inset-0 pb-[70px] bg-black z-50 flex flex-col">
+      {/* Video remoto (fullscreen) */}
+      <div className="flex-1 relative bg-black">
+        <video
+          autoPlay
+          playsInline
+          ref={video => {
+            if (video && remoteStreamVideo) {
+              video.srcObject = remoteStreamVideo;
+            }
+          }}
+          className="w-full h-full object-cover"
+        />
+        
+        {/* Video local (pip en esquina) */}
+        <div className="absolute bottom-4 right-4 w-32 h-48 rounded-xl overflow-hidden shadow-lg border-2 border-white/50">
+          <video
+            autoPlay
+            playsInline
+            muted
+            ref={video => {
+              if (video && localStream) {
+                video.srcObject = localStream;
+              }
+            }}
+            className="w-full h-full object-cover"
+          />
         </div>
+        
+        {/* Información de llamada */}
+        <div className="absolute top-4 left-0 right-0 text-center">
+          <p className="text-white text-xl font-semibold">{otroUsuarioNombre}</p>
+          <p className="text-gray-300 text-sm">
+            {llamando ? "Llamando..." : "En llamada"}
+          </p>
+        </div>
+        
+        {/* Controles */}
+        <div className="absolute bottom-8 left-0 right-0 flex justify-center gap-6">
+          {/* Micrófono */}
+          <button
+            onClick={toggleAudio}
+            className="w-14 h-14 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center transition-all"
+          >
+            {isAudioEnabled ? (
+              <FaMicrophone className="text-white text-2xl" />
+            ) : (
+              <FaMicrophoneSlash className="text-red-500 text-2xl" />
+            )}
+          </button>
+          
+          {/* Video */}
+          <button
+            onClick={toggleVideo}
+            className="w-14 h-14 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center transition-all"
+          >
+            {isVideoEnabled ? (
+              <FaVideo className="text-white text-2xl" />
+            ) : (
+              <FaVideoSlash className="text-red-500 text-2xl" />
+            )}
+          </button>
+          
+          {/* Colgar */}
+          <button
+            onClick={colgarLlamada}
+            className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-all"
+          >
+            <FaPhoneSlash className="text-white text-2xl" />
+          </button>
+        </div>
+        
+        {/* Botón cerrar (para modo prueba) */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 w-10 h-10 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center transition-all"
+        >
+          <FaTimes className="text-white text-xl" />
+        </button>
       </div>
     </div>
   );

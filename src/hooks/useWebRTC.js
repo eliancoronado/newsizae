@@ -1,25 +1,21 @@
+// hooks/useWebRTC.js
 import { useEffect, useRef, useState } from "react";
-import {
-  getDatabase,
-  ref,
-  set,
-  onValue,
-  push,
-  update,
-} from "firebase/database";
+import { getDatabase, ref, set, onValue, push, update } from "firebase/database";
 
 export const useWebRTC = (userId, otroUserId, onCallEnd) => {
   const [llamando, setLlamando] = useState(false);
   const [enLlamada, setEnLlamada] = useState(false);
   const [llamadaEntrante, setLlamadaEntrante] = useState(null);
-  const [audioStream, setAudioStream] = useState(null);
+  const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
+  const [remoteStreamVideo, setRemoteStreamVideo] = useState(null);
+  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
 
   const peerConnection = useRef(null);
-  const llamadaRef = useRef(null);
+  const callDocRef = useRef(null);
+  const callIdRef = useRef(null);
   const db = getDatabase();
-  const addedCandidatesCreador = useRef(new Set());
-  const addedCandidatesDestinatario = useRef(new Set());
 
   const configuration = {
     iceServers: [
@@ -27,359 +23,306 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
       { urls: "stun:stun1.l.google.com:19302" },
       { urls: "stun:stun2.l.google.com:19302" },
     ],
+    iceCandidatePoolSize: 10,
   };
 
-  const obtenerMicrofono = async () => {
+  // Obtener medios (cámara y micrófono)
+  const obtenerMedios = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setAudioStream(stream);
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: true, 
+        audio: true 
+      });
+      console.log("🎥 Medios obtenidos:", stream.getTracks().length);
+      setLocalStream(stream);
       return stream;
     } catch (error) {
-      console.error("Error al acceder al micrófono:", error);
+      console.error("Error al acceder a cámara/micrófono:", error);
       throw error;
     }
   };
 
   const limpiarEstado = () => {
-    if (audioStream) {
-      audioStream.getTracks().forEach((track) => track.stop());
+    console.log("🧹 Limpiando estado de llamada...");
+    
+    if (localStream) {
+      localStream.getTracks().forEach(track => track.stop());
     }
-
     if (remoteStream) {
-      remoteStream.getTracks().forEach((track) => track.stop());
+      remoteStream.getTracks().forEach(track => track.stop());
     }
-
     if (peerConnection.current) {
       peerConnection.current.close();
       peerConnection.current = null;
     }
 
+    setLocalStream(null);
+    setRemoteStream(null);
+    setRemoteStreamVideo(null);
     setEnLlamada(false);
     setLlamando(false);
-    setAudioStream(null);
-    setRemoteStream(null);
-    llamadaRef.current = null;
-    addedCandidatesCreador.current.clear();
-    addedCandidatesDestinatario.current.clear();
+    setLlamadaEntrante(null);
+    callDocRef.current = null;
+    callIdRef.current = null;
   };
 
-  // ESCUCHAR LLAMADAS ENTRANTES
-  const escucharLlamadasEntrantes = () => {
+  // Escuchar llamadas entrantes
+  useEffect(() => {
     if (!userId) return;
-    console.log(`👂 Escuchando llamadas para: ${userId}`);
-
+    
     const llamadasRef = ref(db, "llamadas");
-
-    return onValue(llamadasRef, (snapshot) => {
+    
+    const unsubscribe = onValue(llamadasRef, (snapshot) => {
       const data = snapshot.val();
-      console.log("📊 Datos en /llamadas:", data);
-
       if (!data) {
         if (llamadaEntrante) setLlamadaEntrante(null);
         return;
       }
-
-      let llamadaActiva = null;
-
+      
+      // Buscar llamada donde soy destinatario y no está finalizada
       for (const [callId, callData] of Object.entries(data)) {
-        if (
-          callData.destinatario === userId &&
-          callData.estado !== "finalizada" &&
-          callData.creador !== userId
-        ) {
-          llamadaActiva = { callId, ...callData };
+        if (callData.destinatario === userId && callData.estado === "llamando") {
+          setLlamadaEntrante({
+            callId: callId,
+            creador: callData.creador,
+            creadorNombre: callData.creadorNombre,
+            oferta: callData.oferta,
+          });
+          callIdRef.current = callId;
           break;
         }
       }
-
-      if (llamadaActiva) {
-        setLlamadaEntrante({
-          callId: llamadaActiva.callId,
-          creador: llamadaActiva.creador,
-          creadorNombre: llamadaActiva.creadorNombre,
-          oferta: llamadaActiva.oferta,
-          estado: llamadaActiva.estado,
-        });
-      } else if (llamadaEntrante) {
-        setLlamadaEntrante(null);
-      }
     });
-  };
-  // INICIAR LLAMADA
+    
+    return () => unsubscribe();
+  }, [userId]);
+
+  // INICIAR LLAMADA (como creador)
   const iniciarLlamada = async (nombreCreador = "Usuario") => {
     if (!otroUserId) {
       console.error("No hay destinatario");
       return;
     }
 
-    if (enLlamada || llamando) {
-      console.log("⚠️ Ya hay una llamada en curso");
-      alert("Ya hay una llamada en curso");
-      return;
-    }
-
     try {
       setLlamando(true);
       console.log("📞 Iniciando llamada a:", otroUserId);
-
-      const stream = await obtenerMicrofono();
+      
+      // 1. Obtener medios
+      const stream = await obtenerMedios();
+      
+      // 2. Crear peer connection
       peerConnection.current = new RTCPeerConnection(configuration);
-
-      stream.getTracks().forEach((track) => {
+      
+      // 3. Agregar tracks locales
+      stream.getTracks().forEach(track => {
         peerConnection.current.addTrack(track, stream);
       });
-
+      
+      // 4. Manejar tracks remotos
       peerConnection.current.ontrack = (event) => {
-        console.log("📡 Stream remoto recibido en llamador");
-        setRemoteStream(event.streams[0]);
-        // 🔥 ESTA LÍNEA CAMBIA TODO
-        setLlamando(false);
-        setEnLlamada(true);
+        console.log("📡 Track remoto recibido:", event.track.kind);
+        const remote = new MediaStream();
+        event.streams[0].getTracks().forEach(track => {
+          remote.addTrack(track);
+        });
+        setRemoteStream(remote);
+        setRemoteStreamVideo(remote);
       };
-
-      // 🔥 ENVIAR ICE (creador)
+      
+      // 5. Manejar ICE candidates
       peerConnection.current.onicecandidate = async (event) => {
-        if (event.candidate && llamadaRef.current) {
-          const candidatosRef = ref(
-            db,
-            `candidatos/${llamadaRef.current.key}/creador`,
-          );
-          await push(candidatosRef, event.candidate);
+        if (event.candidate && callDocRef.current) {
+          const candidateRef = ref(db, `candidatos/${callDocRef.current.key}/creador`);
+          await push(candidateRef, event.candidate.toJSON());
         }
       };
-
-      peerConnection.current.oniceconnectionstatechange = () => {
-        console.log(
-          "ICE connection state:",
-          peerConnection.current?.iceConnectionState,
-        );
-
-        if (
-          peerConnection.current?.iceConnectionState === "connected" ||
-          peerConnection.current?.iceConnectionState === "completed"
-        ) {
-          console.log("🎉 Conexión ICE establecida!");
-          setLlamando(false);
-          setEnLlamada(true);
-        } else if (peerConnection.current?.iceConnectionState === "failed") {
-          colgarLlamada();
-        }
-      };
-
-      // 🔥 CREAR OFERTA
+      
+      // 6. Crear oferta
       const offer = await peerConnection.current.createOffer();
       await peerConnection.current.setLocalDescription(offer);
-
-      const nuevaLlamadaRef = push(ref(db, "llamadas"));
-      llamadaRef.current = nuevaLlamadaRef;
-
-      await set(nuevaLlamadaRef, {
+      
+      // 7. Guardar en Firebase (estructura similar a la guía)
+      const callDoc = push(ref(db, "llamadas"));
+      callDocRef.current = callDoc;
+      callIdRef.current = callDoc.key;
+      
+      await set(callDoc, {
         estado: "llamando",
         creador: userId,
         creadorNombre: nombreCreador,
         destinatario: otroUserId,
         creado_en: Date.now(),
-        oferta: offer,
+        oferta: {
+          sdp: offer.sdp,
+          type: offer.type,
+        },
       });
-
-      console.log("✅ Llamada guardada, esperando respuesta...");
-
-      const callId = nuevaLlamadaRef.key;
-
-      // 🔥🔥🔥 ESCUCHAR ICE DEL DESTINATARIO (LO MÁS IMPORTANTE)
-      const candidatosDestinatarioRef = ref(
-        db,
-        `candidatos/${callId}/destinatario`,
-      );
-
-      onValue(candidatosDestinatarioRef, (snapshot) => {
+      
+      // 8. Escuchar respuesta
+      const unsubscribeRespuesta = onValue(ref(db, `llamadas/${callDoc.key}`), async (snapshot) => {
+        const data = snapshot.val();
+        if (!data) return;
+        
+        // Si hay respuesta y no tenemos remote description
+        if (data.respuesta && peerConnection.current && !peerConnection.current.currentRemoteDescription) {
+          console.log("✅ Respuesta recibida!");
+          const answer = new RTCSessionDescription(data.respuesta);
+          await peerConnection.current.setRemoteDescription(answer);
+          setLlamando(false);
+          setEnLlamada(true);
+          unsubscribeRespuesta();
+        }
+        
+        if (data.estado === "finalizada") {
+          limpiarEstado();
+          if (onCallEnd) onCallEnd();
+          unsubscribeRespuesta();
+        }
+      });
+      
+      // 9. Escuchar ICE candidates del destinatario
+      const unsubscribeCandidatos = onValue(ref(db, `candidatos/${callDoc.key}/destinatario`), (snapshot) => {
         const candidatos = snapshot.val();
-
         if (candidatos && peerConnection.current) {
-          Object.entries(candidatos).forEach(([key, candidato]) => {
-            if (!addedCandidatesDestinatario.current.has(key)) {
-              addedCandidatesDestinatario.current.add(key);
-              peerConnection.current.addIceCandidate(
-                new RTCIceCandidate(candidato),
-              );
-            }
+          Object.values(candidatos).forEach(candidato => {
+            peerConnection.current.addIceCandidate(new RTCIceCandidate(candidato));
           });
         }
       });
-
-      // 🔥 ESCUCHAR RESPUESTA
-      const callRef = ref(db, `llamadas/${callId}`);
-      const unsubscribeRespuesta = onValue(callRef, async (snapshot) => {
-        const data = snapshot.val();
-
-        if (!data || data.estado === "finalizada") {
-          console.log("📴 La llamada fue finalizada");
-          colgarLlamada();
-          limpiarEstado();
-          unsubscribeRespuesta();
-          return;
-        }
-
-        // 🔥 PROTECCIÓN para no setear varias veces
-        if (
-          data.respuesta &&
-          peerConnection.current &&
-          !peerConnection.current.currentRemoteDescription
-        ) {
-          console.log("✅ Respuesta recibida del destinatario!");
-
-          try {
-            await peerConnection.current.setRemoteDescription(
-              new RTCSessionDescription(data.respuesta),
-            );
-          } catch (err) {
-            console.error("Error setRemoteDescription:", err);
-          }
-        }
-      });
-
-      // ⏰ TIMEOUT
+      
+      // Guardar referencias para limpiar
+      const cleanup = () => {
+        unsubscribeRespuesta();
+        unsubscribeCandidatos();
+      };
+      
+      // Timeout de 30 segundos
       setTimeout(() => {
         if (llamando && !enLlamada) {
           console.log("⏰ Timeout - No contestaron");
           colgarLlamada();
+          cleanup();
         }
       }, 30000);
+      
     } catch (error) {
       console.error("Error al iniciar llamada:", error);
       setLlamando(false);
     }
   };
-
-  // ACEPTAR LLAMADA
+  
+  // ACEPTAR LLAMADA (como receptor)
   const aceptarLlamada = async () => {
     if (!llamadaEntrante) return;
-
+    
     try {
       console.log("✅ Aceptando llamada de:", llamadaEntrante.creador);
-
-      const stream = await obtenerMicrofono();
+      
+      // 1. Obtener medios
+      const stream = await obtenerMedios();
+      
+      // 2. Crear peer connection
       peerConnection.current = new RTCPeerConnection(configuration);
-
-      stream.getTracks().forEach((track) => {
+      
+      // 3. Agregar tracks locales
+      stream.getTracks().forEach(track => {
         peerConnection.current.addTrack(track, stream);
       });
-
+      
+      // 4. Manejar tracks remotos
       peerConnection.current.ontrack = (event) => {
-        console.log("📡 Stream remoto recibido en receptor");
-        setRemoteStream(event.streams[0]);
-        // 🔥 ESTA LÍNEA CAMBIA TODO
-        setLlamando(false);
-        setEnLlamada(true);
+        console.log("📡 Track remoto recibido:", event.track.kind);
+        const remote = new MediaStream();
+        event.streams[0].getTracks().forEach(track => {
+          remote.addTrack(track);
+        });
+        setRemoteStream(remote);
+        setRemoteStreamVideo(remote);
       };
-
+      
+      // 5. Manejar ICE candidates
       peerConnection.current.onicecandidate = async (event) => {
         if (event.candidate) {
-          const candidatosRef = ref(
-            db,
-            `candidatos/${llamadaEntrante.callId}/destinatario`,
-          );
-          await push(candidatosRef, event.candidate);
+          const candidateRef = ref(db, `candidatos/${llamadaEntrante.callId}/destinatario`);
+          await push(candidateRef, event.candidate.toJSON());
         }
       };
-
-      peerConnection.current.oniceconnectionstatechange = () => {
-        console.log(
-          "ICE connection state (receptor):",
-          peerConnection.current?.iceConnectionState,
-        );
-        if (
-          peerConnection.current?.iceConnectionState === "connected" ||
-          peerConnection.current?.iceConnectionState === "completed"
-        ) {
-          console.log("🎉 Conexión ICE establecida!");
-          setEnLlamada(true);
-        } else if (peerConnection.current?.iceConnectionState === "failed") {
-          colgarLlamada();
-        }
-      };
-
-      await peerConnection.current.setRemoteDescription(
-        new RTCSessionDescription(llamadaEntrante.oferta),
-      );
-
+      
+      // 6. Set remote description con la oferta
+      const offer = new RTCSessionDescription(llamadaEntrante.oferta);
+      await peerConnection.current.setRemoteDescription(offer);
+      
+      // 7. Crear respuesta
       const answer = await peerConnection.current.createAnswer();
       await peerConnection.current.setLocalDescription(answer);
-
-      const llamadaRefFirebase = ref(db, `llamadas/${llamadaEntrante.callId}`);
-      await update(llamadaRefFirebase, {
-        respuesta: answer,
+      
+      // 8. Guardar respuesta en Firebase
+      await update(ref(db, `llamadas/${llamadaEntrante.callId}`), {
+        respuesta: {
+          sdp: answer.sdp,
+          type: answer.type,
+        },
         estado: "en_curso",
       });
-
-      const candidatosCreadorRef = ref(
-        db,
-        `candidatos/${llamadaEntrante.callId}/creador`,
-      );
-
-      onValue(candidatosCreadorRef, (snapshot) => {
+      
+      // 9. Escuchar ICE candidates del creador
+      const unsubscribeCandidatos = onValue(ref(db, `candidatos/${llamadaEntrante.callId}/creador`), (snapshot) => {
         const candidatos = snapshot.val();
         if (candidatos && peerConnection.current) {
-          Object.entries(candidatos).forEach(([key, candidato]) => {
-            if (!addedCandidatesCreador.current.has(key)) {
-              addedCandidatesCreador.current.add(key);
-              peerConnection.current.addIceCandidate(
-                new RTCIceCandidate(candidato),
-              );
-            }
+          Object.values(candidatos).forEach(candidato => {
+            peerConnection.current.addIceCandidate(new RTCIceCandidate(candidato));
           });
         }
       });
-
+      
       setLlamadaEntrante(null);
+      setEnLlamada(true);
+      setLlamando(false);
+      
     } catch (error) {
       console.error("Error al aceptar llamada:", error);
       alert("Error al conectar la llamada");
+      colgarLlamada();
     }
   };
-
+  
   // COLGAR LLAMADA
   const colgarLlamada = async () => {
     console.log("📞 Colgando llamada...");
-
-    const callId = llamadaEntrante?.callId || llamadaRef.current?.key;
-
-    if (callId) {
-      const callRef = ref(db, `llamadas/${callId}`);
-      await update(callRef, { estado: "finalizada" });
+    
+    if (callIdRef.current) {
+      await update(ref(db, `llamadas/${callIdRef.current}`), {
+        estado: "finalizada",
+      });
     }
-
-    if (audioStream) {
-      audioStream.getTracks().forEach((track) => track.stop());
-    }
-
-    if (remoteStream) {
-      remoteStream.getTracks().forEach((track) => track.stop());
-    }
-
-    if (peerConnection.current) {
-      peerConnection.current.close();
-      peerConnection.current = null;
-    }
-
+    
     limpiarEstado();
-    setEnLlamada(false);
-    setLlamando(false);
-    setAudioStream(null);
-    setRemoteStream(null);
-    llamadaRef.current = null;
-
     if (onCallEnd) onCallEnd();
   };
-
-  useEffect(() => {
-    const unsubscribe = escucharLlamadasEntrantes();
-    return () => {
-      if (unsubscribe) unsubscribe();
-      colgarLlamada();
-    };
-  }, [userId]);
-
+  
+  // Alternar video
+  const toggleVideo = () => {
+    if (localStream) {
+      const videoTrack = localStream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = !videoTrack.enabled;
+        setIsVideoEnabled(videoTrack.enabled);
+      }
+    }
+  };
+  
+  // Alternar audio
+  const toggleAudio = () => {
+    if (localStream) {
+      const audioTrack = localStream.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        setIsAudioEnabled(audioTrack.enabled);
+      }
+    }
+  };
+  
   return {
     iniciarLlamada,
     aceptarLlamada,
@@ -387,6 +330,12 @@ export const useWebRTC = (userId, otroUserId, onCallEnd) => {
     enLlamada,
     llamando,
     llamadaEntrante,
+    localStream,
     remoteStream,
+    remoteStreamVideo,
+    isVideoEnabled,
+    isAudioEnabled,
+    toggleVideo,
+    toggleAudio,
   };
 };
