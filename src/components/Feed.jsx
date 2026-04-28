@@ -63,6 +63,12 @@ const Feed = ({ currentUser }) => {
   // Estados para carrusel
   const [currentSlide, setCurrentSlide] = useState({});
   const [allPosts, setAllPosts] = useState([]);
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
+
+  // Estados para edición de posts
+  const [editingPost, setEditingPost] = useState(null);
+  const [editContent, setEditContent] = useState("");
+  const [editing, setEditing] = useState(false);
 
   // Cargar amigos
   useEffect(() => {
@@ -74,6 +80,110 @@ const Feed = ({ currentUser }) => {
     };
     fetchFriends();
   }, [currentUser.uid]);
+
+  // 🔥 Listener en tiempo real para todos los posts
+  useEffect(() => {
+    if (!friendsIds.length && isFirstLoad) return; // Esperar a que carguen amigos
+
+    const postsRef = ref(db, "posts");
+
+    const unsubscribe = onValue(postsRef, (snapshot) => {
+      const data = snapshot.val();
+
+      if (data) {
+        // Procesar todos los posts
+        let processedPosts = Object.entries(data)
+          .map(([id, post]) => {
+            let mediaArray = post.media || [];
+
+            // Compatibilidad con posts antiguos
+            if (post.images && post.images.length > 0) {
+              const imageMedia = post.images.map((url) => ({
+                type: "image",
+                url,
+              }));
+              mediaArray = [...imageMedia, ...mediaArray];
+            }
+
+            if (post.videos && post.videos.length > 0) {
+              const videoMedia = post.videos.map((url) => ({
+                type: "video",
+                url,
+              }));
+              mediaArray = [...mediaArray, ...videoMedia];
+            }
+
+            return {
+              id,
+              ...post,
+              media: mediaArray,
+              likes: post.likes || {},
+              comments: post.comments || {},
+            };
+          })
+          .filter((post) => {
+            // Filtrar por privacidad
+            const hasVideo = post.media.some((m) => m.type === "video");
+            if (hasVideo) return false;
+
+            if (post.privacy === "public") return true;
+            if (post.privacy === "friends" && friendsIds.includes(post.userId))
+              return true;
+            if (post.userId === currentUser.uid) return true;
+            return false;
+          })
+          .sort((a, b) => b.timestamp - a.timestamp);
+
+        // Actualizar allPosts para scroll infinito
+        setAllPosts(processedPosts);
+
+        // Para la primera carga, mostrar primeros 5 posts
+        if (isFirstLoad) {
+          const initialPosts = processedPosts.slice(0, 5);
+          setPosts(initialPosts);
+          setHasMore(processedPosts.length > 5);
+          setLastPostTimestamp(
+            initialPosts[initialPosts.length - 1]?.timestamp,
+          );
+          setIsFirstLoad(false);
+          setInitialLoaded(true);
+        } else {
+          // Para actualizaciones posteriores, mantener los posts actuales pero actualizar likes/comentarios
+          setPosts((prevPosts) => {
+            // Crear un mapa de posts actualizados
+            const updatedPostsMap = new Map(
+              processedPosts.map((p) => [p.id, p]),
+            );
+
+            // Actualizar solo los campos que cambiaron (likes, comments)
+            return prevPosts.map((prevPost) => {
+              const updatedPost = updatedPostsMap.get(prevPost.id);
+              if (updatedPost) {
+                return {
+                  ...prevPost,
+                  likes: updatedPost.likes,
+                  comments: updatedPost.comments,
+                };
+              }
+              return prevPost;
+            });
+          });
+        }
+      } else {
+        if (isFirstLoad) {
+          setPosts([]);
+          setAllPosts([]);
+          setHasMore(false);
+          setIsFirstLoad(false);
+          setInitialLoaded(true);
+        }
+      }
+
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [friendsIds, currentUser.uid]);
 
   // Cargar posts iniciales
   useEffect(() => {
@@ -151,6 +261,7 @@ const Feed = ({ currentUser }) => {
     if (loading || !hasMore) return;
 
     setLoading(true);
+    // Pequeño delay para simular carga y evitar problemas de rendimiento
     setTimeout(() => {
       const currentCount = posts.length;
       const nextPosts = allPosts.slice(currentCount, currentCount + 5);
@@ -166,7 +277,7 @@ const Feed = ({ currentUser }) => {
         setHasMore(false);
       }
       setLoading(false);
-    }, 500);
+    }, 300);
   }, [loading, hasMore, posts.length, allPosts]);
 
   // Intersection Observer para scroll infinito
@@ -293,6 +404,37 @@ const Feed = ({ currentUser }) => {
     setNewPostMedia([]);
     setPrivacy("public");
     setShowPostForm(false);
+  };
+
+  // Editar post
+  const editPost = async (postId, newContent) => {
+    if (!newContent.trim()) return;
+
+    setEditing(true);
+    try {
+      const postRef = ref(db, `posts/${postId}`);
+      await update(postRef, {
+        content: newContent,
+        editedAt: Date.now(), // Campo opcional para saber que fue editado
+      });
+
+      // Actualizar localmente
+      setPosts((prevPosts) =>
+        prevPosts.map((post) =>
+          post.id === postId
+            ? { ...post, content: newContent, editedAt: Date.now() }
+            : post,
+        ),
+      );
+
+      setEditingPost(null);
+      setEditContent("");
+    } catch (error) {
+      console.error("Error al editar post:", error);
+      alert("Error al editar el post");
+    } finally {
+      setEditing(false);
+    }
   };
 
   const Carousel = ({ media, postId }) => {
@@ -717,16 +859,32 @@ const Feed = ({ currentUser }) => {
                       addSuffix: true,
                       locale: es,
                     })}
+                    {post.editedAt && (
+                      <span className="ml-1 text-gray-500">(editado)</span>
+                    )}
                   </p>
                 </div>
               </div>
               {post.userId === currentUser.uid && (
-                <button
-                  onClick={() => deletePost(post.id)}
-                  className="text-gray-400 hover:text-red-500"
-                >
-                  <FaTrash />
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setEditingPost(post);
+                      setEditContent(post.content || "");
+                    }}
+                    className="text-gray-400 hover:text-[#2e9b4f] transition"
+                    title="Editar publicación"
+                  >
+                    <FaPencilAlt className="text-sm" />
+                  </button>
+                  <button
+                    onClick={() => deletePost(post.id)}
+                    className="text-gray-400 hover:text-red-500 transition"
+                    title="Eliminar publicación"
+                  >
+                    <FaTrash />
+                  </button>
+                </div>
               )}
             </div>
 
@@ -838,6 +996,69 @@ const Feed = ({ currentUser }) => {
           </div>
         )}
       </div>
+
+      {/* Modal para editar post */}
+      {editingPost && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center">
+          <div className="bg-[#242526] rounded-2xl w-full max-w-md mx-4 overflow-hidden animate-slide-up">
+            <div className="sticky top-0 bg-[#242526] p-4 border-b border-[#3E4042] flex justify-between items-center">
+              <h3 className="text-white font-semibold text-lg">
+                Editar publicación
+              </h3>
+              <button
+                onClick={() => {
+                  setEditingPost(null);
+                  setEditContent("");
+                }}
+                className="text-gray-400 hover:text-white"
+              >
+                <FaTimes className="text-xl" />
+              </button>
+            </div>
+
+            <div className="p-4">
+              <textarea
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                placeholder="Escribe tu publicación..."
+                className="w-full bg-[#3A3B3C] text-white p-3 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-[#2e9b4f]"
+                rows="4"
+                autoFocus
+              />
+
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => {
+                    setEditingPost(null);
+                    setEditContent("");
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => editPost(editingPost.id, editContent)}
+                  disabled={!editContent.trim() || editing}
+                  className="flex-1 px-4 py-2 bg-[#2e9b4f] text-white rounded-lg hover:bg-[#268e46] transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {editing ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    "Guardar cambios"
+                  )}
+                </button>
+              </div>
+
+              <p className="text-xs text-gray-500 text-center mt-3">
+                Los cambios se actualizarán en tiempo real
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
