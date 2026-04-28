@@ -385,10 +385,16 @@ export default function ChatWindow({
           transition: "margin-bottom 0.3s ease-out",
         }}
       >
-        <form onSubmit={sendMessage} className="flex gap-2">
+        <form autoComplete="off" onSubmit={sendMessage} className="flex gap-2">
           <input
+            name="chat"
             ref={inputRef}
             type="text"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck="false"
+            inputMode="text"
             value={newMessage}
             onChange={(e) => {
               setNewMessage(e.target.value);
