@@ -386,7 +386,7 @@ export default function ChatWindow({
         }}
       >
         <form autoComplete="off" onSubmit={sendMessage} className="flex gap-2">
-          <input
+          <textarea
             name="chat"
             ref={inputRef}
             type="text"
