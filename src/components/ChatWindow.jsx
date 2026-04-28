@@ -264,7 +264,7 @@ export default function ChatWindow({
   }
 
   return (
-    <div className="h-full flex flex-col bg-[#18191A] pb-[70px]">
+    <div className="h-full flex flex-col bg-[#18191A]">
       {/* Header */}
       <div className="flex-shrink-0 flex items-center gap-3 p-3 border-b border-[#3E4042] bg-[#242526]">
         {isMobile && (
