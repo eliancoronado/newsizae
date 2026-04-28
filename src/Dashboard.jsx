@@ -394,7 +394,7 @@ export default function Dashboard() {
         />
       )}
 
-      <div className="h-[calc(100vh-7vh)] w-full md:w-auto md:flex-1">
+      <div className={`w-full md:w-auto md:flex-1 ${activeTab === "messages" ? "h-full" : "h-[calc(100vh-7vh)]"} overflow-hidden`}>
         {activeTab === "home" && (
           <div className="flex-1 h-full max-h-full overflow-y-auto bg-[#121212] pb-20 md:pb-0">
             {/* Header Responsive */}
@@ -575,12 +575,18 @@ export default function Dashboard() {
 
         {/* BottomBar - Solo visible en móvil */}
       </div>
-      <BottomBar
+      {activeTab === "messages" ? (
+        <>
+        </>
+      ) : (
+        <BottomBar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         totalUnread={totalUnread}
         user={user}
       />
+      )}
+      
       {showReelUploader && (
         <ReelUploader
           currentUser={user}
