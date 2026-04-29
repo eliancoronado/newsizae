@@ -34,7 +34,10 @@ import {
   FaVideo,
 } from "react-icons/fa";
 import { formatDistanceToNow } from "date-fns";
+import { sendFriendRequest } from "../firebaseService";
+import { getUserById } from "../firebaseService";
 import { es } from "date-fns/locale";
+import { useNavigate } from "react-router-dom";
 
 const Feed = ({ currentUser }) => {
   // Estados existentes
@@ -69,6 +72,17 @@ const Feed = ({ currentUser }) => {
   const [editingPost, setEditingPost] = useState(null);
   const [editContent, setEditContent] = useState("");
   const [editing, setEditing] = useState(false);
+
+  // Estados para personas que quizás conozcas
+  const [suggestedUsers, setSuggestedUsers] = useState([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [hiddenUsers, setHiddenUsers] = useState([]); // Para ocultar temporalmente
+  const [notification, setNotification] = useState({
+    show: false,
+    message: "",
+    type: "",
+  });
+  const navigate = useNavigate();
 
   // Cargar amigos
   useEffect(() => {
@@ -191,6 +205,93 @@ const Feed = ({ currentUser }) => {
       loadInitialPosts();
     }
   }, [friendsIds, currentUser.uid]);
+
+  // Cargar sugerencias después de cargar amigos
+  useEffect(() => {
+    if (initialLoaded && friendsIds.length >= 0) {
+      loadSuggestedUsers();
+    }
+  }, [initialLoaded, friendsIds]);
+
+  // Cargar personas que quizás conozcas (usuarios aleatorios que no son amigos)
+  const loadSuggestedUsers = useCallback(async () => {
+    if (!currentUser?.uid) return;
+
+    setLoadingSuggestions(true);
+    try {
+      const usersRef = ref(db, "users");
+      const snapshot = await get(usersRef);
+      const allUsers = snapshot.val() || {};
+
+      // Obtener lista de amigos
+      const friendsSnapshot = await get(
+        ref(db, `users/${currentUser.uid}/friends`),
+      );
+      const friendsObj = friendsSnapshot.val() || {};
+      const friendsIds = Object.keys(friendsObj);
+
+      // Obtener solicitudes enviadas y recibidas
+      const currentUserData = await getUserById(currentUser.uid);
+      const sentRequests = Object.keys(currentUserData?.sentRequests || {});
+      const receivedRequests = Object.keys(
+        currentUserData?.receivedRequests || {},
+      );
+
+      // Filtrar usuarios sugeridos
+      const suggestions = [];
+      for (const [uid, userData] of Object.entries(allUsers)) {
+        // Excluir: usuario actual, amigos, solicitudes pendientes, ya ocultos
+        if (uid === currentUser.uid) continue;
+        if (friendsIds.includes(uid)) continue;
+        if (sentRequests.includes(uid)) continue;
+        if (receivedRequests.includes(uid)) continue;
+        if (hiddenUsers.includes(uid)) continue;
+
+        suggestions.push({
+          uid,
+          name: userData.name,
+          photo: userData.photo,
+          email: userData.email,
+        });
+      }
+
+      // Mezclar aleatoriamente y tomar primeros 10
+      const shuffled = suggestions.sort(() => 0.5 - Math.random());
+      setSuggestedUsers(shuffled.slice(0, 10));
+    } catch (error) {
+      console.error("Error loading suggestions:", error);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  }, [currentUser?.uid, hiddenUsers]);
+
+  // Ocultar sugerencia temporalmente
+  const hideSuggestion = (userId) => {
+    setHiddenUsers((prev) => [...prev, userId]);
+    setSuggestedUsers((prev) => prev.filter((user) => user.uid !== userId));
+  };
+
+  // Enviar solicitud desde sugerencia
+  const sendRequestFromSuggestion = async (toUserId, userName) => {
+    try {
+      await sendFriendRequest(currentUser.uid, toUserId);
+      showNotification(`Solicitud enviada a ${userName} 🚀`, "success");
+      // Ocultar la sugerencia después de enviar solicitud
+      setSuggestedUsers((prev) => prev.filter((user) => user.uid !== toUserId));
+    } catch (error) {
+      console.error("Error sending request:", error);
+      showNotification(error.message || "Error al enviar solicitud", "error");
+    }
+  };
+
+  // Mostrar notificación temporal
+  const showNotification = (message, type = "success") => {
+    setNotification({ show: true, message, type });
+    setTimeout(
+      () => setNotification({ show: false, message: "", type: "" }),
+      3000,
+    );
+  };
 
   const loadInitialPosts = async () => {
     setLoading(true);
@@ -727,6 +828,17 @@ const Feed = ({ currentUser }) => {
         </div>
       </div>
 
+      {/* Notificación flotante */}
+      {notification.show && (
+        <div
+          className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded-lg shadow-lg animate-fade-in ${
+            notification.type === "error" ? "bg-red-500" : "bg-[#2e9b4f]"
+          } text-white font-medium`}
+        >
+          {notification.message}
+        </div>
+      )}
+
       {/* MODAL PARA CREAR POST EN MÓVIL - AGREGADO COMPLETO */}
       {showPostForm && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center md:hidden">
@@ -825,6 +937,67 @@ const Feed = ({ currentUser }) => {
       >
         <FaPencilAlt className="text-xl" />
       </button>
+
+      {/* Carrusel de personas que quizás conozcas */}
+      {suggestedUsers.length > 0 && (
+        <div className="bg-[#242526] rounded-xl p-4 mb-6 shadow">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-lg font-semibold text-[#E4E6EB]">
+              Personas que quizás conozcas
+            </h3>
+            <button
+              onClick={loadSuggestedUsers}
+              className="text-sm text-[#2e9b4f] hover:underline"
+            >
+              Actualizar
+            </button>
+          </div>
+
+          <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2">
+            {loadingSuggestions ? (
+              <div className="flex justify-center py-8 w-full">
+                <div className="w-8 h-8 border-4 border-[#2e9b4f] border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              suggestedUsers.map((user) => (
+                <div
+                  key={user.uid}
+                  className="flex-shrink-0 w-40 bg-[#3A3B3C] rounded-xl p-3 text-center"
+                >
+                  <img
+                    src={user.photo || "https://via.placeholder.com/80"}
+                    alt={user.name}
+                    className="w-20 h-20 rounded-full object-cover mx-auto mb-2"
+                    onClick={() => navigate(`/profile/${user.uid}`)}
+                  />
+                  <p className="font-semibold text-white text-sm truncate">
+                    {user.name}
+                  </p>
+                  <p className="text-xs text-gray-400 truncate mb-2">
+                    {user.email}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() =>
+                        sendRequestFromSuggestion(user.uid, user.name)
+                      }
+                      className="flex-1 bg-[#2e9b4f] hover:bg-[#268e46] text-white text-xs py-1 rounded-full transition"
+                    >
+                      Agregar
+                    </button>
+                    <button
+                      onClick={() => hideSuggestion(user.uid)}
+                      className="flex-1 bg-[#4E4F50] hover:bg-[#5E5F60] text-white text-xs py-1 rounded-full transition"
+                    >
+                      Ocultar
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Feed */}
       <div className="space-y-6">

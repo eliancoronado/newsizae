@@ -394,7 +394,7 @@ export default function Dashboard() {
         />
       )}
 
-      <div className={`w-full md:w-auto md:flex-1 ${activeTab === "messages" ? "h-full" : "h-[calc(100vh-7vh)]"} overflow-hidden`}>
+      <div className={`w-full md:w-auto md:flex-1 ${activeTab === "messages" ? "h-full" : "h-[calc(100vh-7vh)]"}`}>
         {activeTab === "home" && (
           <div className="flex-1 h-full max-h-full overflow-y-auto bg-[#121212] pb-20 md:pb-0">
             {/* Header Responsive */}
@@ -571,7 +571,7 @@ export default function Dashboard() {
         {activeTab === "reels" && <Video currentUser={user} />}
         {activeTab === "projects" && <ProjectsPage currentUser={user} />}
         {activeTab === "community" && <FriendsManager user={user} />}
-        {activeTab === "messages" && <Chat currentUser={user} />}
+        {activeTab === "messages" && <Chat setActiveTab={setActiveTab} currentUser={user} />}
 
         {/* BottomBar - Solo visible en móvil */}
       </div>

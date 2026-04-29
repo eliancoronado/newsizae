@@ -1,5 +1,5 @@
 // components/ProfilePage.jsx
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import Cropper from "react-cropper";
 import "./cropper.css";
 import { useParams, useNavigate } from "react-router-dom";
@@ -18,10 +18,19 @@ import {
   FaCheck,
 } from "react-icons/fa";
 import { uploadToImgBB } from "../utils/uploadImage";
-import { uploadToS3 } from "../utils/uploadToS3SDK"; // o uploadToS3SDK
+import { uploadToS3 } from "../utils/uploadToS3SDK";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../firebase";
-import { ref, onValue, push, set, remove, update } from "firebase/database";
+import { sendFriendRequest, acceptFriendRequest } from "../firebaseService";
+import {
+  ref,
+  onValue,
+  push,
+  set,
+  remove,
+  update,
+  get,
+} from "firebase/database";
 import { db } from "../firebase";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
@@ -222,8 +231,6 @@ export default function ProfilePage() {
   const [commentText, setCommentText] = useState("");
   const [expandedImage, setExpandedImage] = useState(null);
   const navigate = useNavigate();
-  const [currentUserData, setCurrentUserData] = useState(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
   const [editingPersonalInfo, setEditingPersonalInfo] = useState(false);
   const [personalInfo, setPersonalInfo] = useState({
     birthDate: "",
@@ -236,12 +243,19 @@ export default function ProfilePage() {
   });
   const [editingPhoto, setEditingPhoto] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  // Agrega estos estados después de los estados existentes
   const [showCropModal, setShowCropModal] = useState(false);
   const [tempImageFile, setTempImageFile] = useState(null);
   const [tempImagePreview, setTempImagePreview] = useState(null);
   const [cropProgress, setCropProgress] = useState(false);
   const cropperRef = useRef(null);
+  const [friendRequestStatus, setFriendRequestStatus] = useState(null);
+  const [sendingRequest, setSendingRequest] = useState(false);
+  const [pendingRequests, setPendingRequests] = useState({});
+  const [receivedRequests, setReceivedRequests] = useState({});
+  const [editingName, setEditingName] = useState(false);
+  const [nameText, setNameText] = useState("");
+  // Flag para indicar que todos los datos están listos
+  const [currentUser, setCurrentUser] = useState(null);
 
   const relationshipOptions = [
     "No definido",
@@ -249,6 +263,7 @@ export default function ProfilePage() {
     "Comprometido/a",
     "En una relación",
     "Casado/a",
+    "En busca (de cacerìa)",
   ];
 
   // Después del useEffect que carga el perfil, agrega:
@@ -276,143 +291,291 @@ export default function ProfilePage() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Reemplazar el useEffect que obtenía el perfil con fetch al backend
-  // ELIMINA el fetchProfile actual y el useEffect que lo llamaba
-  // Y reemplázalo con esto:
-
   // ==================== LOG 1: Cargar usuario actual ====================
+  // ==================== OBTENER USUARIO ACTUAL ====================
   useEffect(() => {
-    console.log("🔄 [ProfilePage] 2. useEffect para cargar currentUserData");
-    const loadCurrentUser = async () => {
+    console.log("🔄 [ProfilePage] Obteniendo usuario actual...");
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        console.log("✅ [ProfilePage] Usuario autenticado:", user.uid);
+        setCurrentUser({
+          uid: user.uid,
+          name: user.displayName,
+          email: user.email,
+          photo: user.photoURL,
+        });
+      } else {
+        console.warn("⚠️ [ProfilePage] No hay usuario autenticado");
+        navigate("/");
+      }
+    });
+    return () => unsubscribe();
+  }, [navigate]);
+
+  // ==================== CARGAR AMIGOS (como en Video.jsx) ====================
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+
+    const fetchFriends = async () => {
       try {
-        const user = getCurrentUser();
-        console.log("📌 [ProfilePage] getCurrentUser() retorna:", user?.uid);
-        if (user) {
-          // Obtener datos completos del usuario desde Firebase
-          const userData = await getUserById(user.uid);
-          console.log(
-            "📌 [ProfilePage] Datos completos del usuario actual:",
-            userData,
-          );
-          setCurrentUserData(userData);
-        } else {
-          console.warn("⚠️ [ProfilePage] No hay usuario autenticado");
-        }
-      } catch (err) {
-        console.error("❌ [ProfilePage] Error cargando usuario actual:", err);
+        const friendsRef = ref(db, `users/${currentUser.uid}/friends`);
+        const friendsSnapshot = await get(friendsRef);
+        const friendsObj = friendsSnapshot.val() || {};
+        const friendIds = Object.keys(friendsObj);
+        console.log("✅ Amigos cargados:", friendIds);
+        setFriendsIds(friendIds);
+      } catch (error) {
+        console.error("Error cargando amigos:", error);
       }
     };
-    loadCurrentUser();
-  }, []);
 
-  // Modifica el useEffect de carga de perfil para que dependa de isAuthReady
+    fetchFriends();
+  }, [currentUser?.uid]);
+
+  // ==================== CARGAR SOLICITUDES (como en Video.jsx) ====================
   useEffect(() => {
-    console.log("🔄 [ProfilePage] 3. useEffect para cargar perfil. uid:", uid);
-    const loadProfile = async () => {
-      if (!uid) {
-        console.warn("⚠️ [ProfilePage] No hay uid, cancelando carga de perfil");
-        setLoading(false);
-        return;
-      }
+    if (!currentUser?.uid) return;
 
-      // Esperar a que la autenticación esté lista
-      if (!isAuthReady) {
-        console.log("⏳ [ProfilePage] Esperando autenticación...");
-        return;
-      }
-
-      setLoading(true);
-      console.log("⏳ [ProfilePage] Iniciando carga de perfil para uid:", uid);
-
+    const fetchRequests = async () => {
       try {
-        const currentUser = auth.currentUser; // Usar auth.currentUser directamente
-        console.log(
-          "📌 [ProfilePage] Usuario actual (auth):",
-          currentUser?.uid,
+        // Obtener solicitudes enviadas
+        const sentRequestsRef = ref(
+          db,
+          `users/${currentUser.uid}/sentRequests`,
         );
+        const sentSnapshot = await get(sentRequestsRef);
+        const sentObj = sentSnapshot.val() || {};
+        setPendingRequests(sentObj);
 
-        if (!currentUser) {
-          console.warn(
-            "⚠️ [ProfilePage] No hay usuario autenticado, redirigiendo a /",
-          );
-          navigate("/");
-          return;
-        }
+        // Obtener solicitudes recibidas
+        const receivedRequestsRef = ref(
+          db,
+          `users/${currentUser.uid}/receivedRequests`,
+        );
+        const receivedSnapshot = await get(receivedRequestsRef);
+        const receivedObj = receivedSnapshot.val() || {};
+        setReceivedRequests(receivedObj);
 
-        console.log("📡 [ProfilePage] Llamando a getProfile con:", {
-          currentUserId: currentUser.uid,
-          targetUserId: uid,
-        });
+        console.log(
+          "✅ Solicitudes cargadas - Enviadas:",
+          Object.keys(sentObj),
+          "Recibidas:",
+          Object.keys(receivedObj),
+        );
+      } catch (error) {
+        console.error("Error cargando solicitudes:", error);
+      }
+    };
 
+    fetchRequests();
+  }, [currentUser?.uid]);
+
+  // Modifica el useEffect de carga de perfil
+  // ==================== CARGAR PERFIL ====================
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+    if (!uid) return;
+
+    console.log("🔄 [ProfilePage] Cargando perfil para uid:", uid);
+    setLoading(true);
+
+    const loadProfile = async () => {
+      try {
+        // Intentar obtener el perfil completo
         const profileData = await getProfile(currentUser.uid, uid);
-        console.log("✅ [ProfilePage] Perfil recibido:", profileData);
-
+        console.log("✅ Perfil recibido:", profileData);
         setProfile(profileData);
         setIsOwnProfile(currentUser.uid === uid);
         setBioText(profileData.bio || "");
         setError(null);
       } catch (err) {
-        console.error("❌ [ProfilePage] Error en loadProfile:", err);
-        console.error("❌ [ProfilePage] Mensaje de error:", err.message);
+        console.error("❌ Error cargando perfil:", err);
 
+        // Si hay error de permisos, cargar datos básicos
         if (
           err.message.includes("permiso") ||
           err.message.includes("No tienes permiso")
         ) {
-          console.warn("⚠️ [ProfilePage] Error de permisos, redirigiendo");
-          alert("No puedes ver este perfil. Redirigiendo al dashboard.");
-          navigate("/dashboard");
+          try {
+            const basicUserData = await getUserById(uid);
+            if (basicUserData) {
+              setProfile({
+                uid: uid,
+                name: basicUserData.name,
+                email: basicUserData.email,
+                photo: basicUserData.photo,
+                bio: "",
+                coverPhoto: null,
+              });
+              setIsOwnProfile(currentUser.uid === uid);
+            } else {
+              throw new Error("Usuario no encontrado");
+            }
+          } catch (basicErr) {
+            setError("No se pudo cargar el perfil");
+          }
         } else {
-          setError(err.message || "Error al cargar el perfil");
+          setError(err.message);
         }
       } finally {
         setLoading(false);
-        console.log(
-          "🏁 [ProfilePage] Carga de perfil finalizada, loading = false",
-        );
       }
     };
 
     loadProfile();
-  }, [uid, navigate, isAuthReady]); // Añadir isAuthReady como dependencia
+  }, [currentUser?.uid, uid]);
 
-  // ==================== LOG 3: Cargar amigos ====================
+  // Cargar solicitudes pendientes (enviadas y recibidas)
+  // ==================== VERIFICAR ESTADO DE AMISTAD ====================
   useEffect(() => {
-    console.log("🔄 [ProfilePage] 4. useEffect para cargar amigos");
-    const fetchFriends = async () => {
-      const currentUser = getCurrentUser();
-      console.log(
-        "📌 [ProfilePage] Usuario actual para amigos:",
-        currentUser?.uid,
-      );
+    // Esperar a que todo esté listo
+    if (!currentUser?.uid) {
+      console.log("⏳ Esperando currentUser...");
+      return;
+    }
 
-      if (!currentUser) {
-        console.warn(
-          "⚠️ [ProfilePage] No hay usuario autenticado, no se cargan amigos",
-        );
-        return;
-      }
+    if (!profile) {
+      console.log("⏳ Esperando profile...");
+      return;
+    }
 
-      try {
-        console.log(
-          "📡 [ProfilePage] Llamando a getMyFriends para:",
-          currentUser.uid,
-        );
-        const friends = await getMyFriends(currentUser.uid);
-        console.log("✅ [ProfilePage] Amigos obtenidos:", friends);
+    console.log("🔍 Verificando estado de amistad...");
+    console.log("Usuario actual:", currentUser.uid);
+    console.log("Perfil objetivo:", uid);
+    console.log("Es propio perfil?", isOwnProfile);
+    console.log("Amigos IDs:", friendsIds);
+    console.log("Solicitudes enviadas:", pendingRequests);
+    console.log("Solicitudes recibidas:", receivedRequests);
 
-        const friendIds = friends.map((f) => f.uid);
-        console.log("📌 [ProfilePage] IDs de amigos:", friendIds);
-        setFriendsIds(friendIds);
-      } catch (err) {
-        console.error("❌ [ProfilePage] Error cargando amigos:", err);
-      }
-    };
-    fetchFriends();
-  }, []);
+    if (isOwnProfile) {
+      console.log("📌 Es propio perfil");
+      setFriendRequestStatus("friends");
+      return;
+    }
+
+    // Verificar si son amigos
+    if (friendsIds.includes(uid)) {
+      console.log("✅ Son amigos!");
+      setFriendRequestStatus("friends");
+      return;
+    }
+
+    // Verificar solicitud enviada
+    if (pendingRequests[uid]) {
+      console.log("📤 Solicitud enviada");
+      setFriendRequestStatus("sent");
+      return;
+    }
+
+    // Verificar solicitud recibida
+    if (receivedRequests[uid]) {
+      console.log("📥 Solicitud recibida");
+      setFriendRequestStatus("pending");
+      return;
+    }
+
+    console.log("❌ Sin relación");
+    setFriendRequestStatus("none");
+  }, [
+    currentUser,
+    profile,
+    uid,
+    isOwnProfile,
+    friendsIds,
+    pendingRequests,
+    receivedRequests,
+  ]);
+
+  // Enviar solicitud de amistad
+  const sendFriendRequestToUser = async () => {
+    if (!currentUser?.uid || !profile) return;
+
+    setSendingRequest(true);
+    try {
+      // Crear solicitud en receivedRequests del destinatario
+      await set(ref(db, `users/${uid}/receivedRequests/${currentUser.uid}`), {
+        from_uid: currentUser.uid,
+        from_name: currentUser.name,
+        from_photo: currentUser.photo,
+        timestamp: Date.now(),
+        status: "pending",
+      });
+
+      // Crear solicitud en sentRequests del remitente
+      await set(ref(db, `users/${currentUser.uid}/sentRequests/${uid}`), {
+        to_uid: uid,
+        to_name: profile.name,
+        timestamp: Date.now(),
+        status: "pending",
+      });
+
+      setFriendRequestStatus("sent");
+      alert("Solicitud de amistad enviada");
+    } catch (error) {
+      console.error("Error sending request:", error);
+      alert(error.message || "Error al enviar solicitud");
+    } finally {
+      setSendingRequest(false);
+    }
+  };
+
+  // Aceptar solicitud de amistad
+  const acceptFriendRequestFromUser = async () => {
+    if (!currentUser?.uid || !profile) return;
+
+    setSendingRequest(true);
+    try {
+      // Agregar a amigos mutuamente
+      await set(ref(db, `users/${currentUser.uid}/friends/${uid}`), {
+        uid: uid,
+        name: profile.name,
+        photo: profile.photo,
+        timestamp: Date.now(),
+      });
+
+      await set(ref(db, `users/${uid}/friends/${currentUser.uid}`), {
+        uid: currentUser.uid,
+        name: currentUser.name,
+        photo: currentUser.photo,
+        timestamp: Date.now(),
+      });
+
+      // Eliminar solicitudes pendientes
+      await remove(ref(db, `users/${currentUser.uid}/receivedRequests/${uid}`));
+      await remove(ref(db, `users/${uid}/sentRequests/${currentUser.uid}`));
+
+      setFriendRequestStatus("friends");
+      setFriendsIds((prev) => [...prev, uid]);
+
+      alert("¡Ahora son amigos!");
+      window.location.reload();
+    } catch (error) {
+      console.error("Error accepting request:", error);
+      alert(error.message || "Error al aceptar solicitud");
+    } finally {
+      setSendingRequest(false);
+    }
+  };
+
+  // Rechazar solicitud
+  const rejectFriendRequestFromUser = async () => {
+    if (!currentUser?.uid || !profile) return;
+
+    setSendingRequest(true);
+    try {
+      await remove(ref(db, `users/${currentUser.uid}/receivedRequests/${uid}`));
+      await remove(ref(db, `users/${uid}/sentRequests/${currentUser.uid}`));
+      setFriendRequestStatus("none");
+      alert("Solicitud rechazada");
+    } catch (error) {
+      console.error("Error rejecting request:", error);
+      alert("Error al rechazar solicitud");
+    } finally {
+      setSendingRequest(false);
+    }
+  };
 
   // Modificar handleUpdateName
-  // ProfilePage.jsx - Modificar handleUpdateName
   const handleUpdateName = async () => {
     if (!nameText.trim()) return;
     setUpdating(true);
@@ -452,53 +615,15 @@ export default function ProfilePage() {
     }
   };
 
-  const handlePhotoUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    setUploadingPhoto(true);
-    try {
-      // Usar uploadToS3 o uploadToImgBB según tengas configurado
-      const imageUrl = await uploadToS3(file);
-      const currentUser = getCurrentUser();
-      if (!currentUser) throw new Error("No autenticado");
-
-      // 1. Actualizar perfil del usuario
-      await updateProfile(currentUser.uid, { photo: imageUrl });
-
-      // 2. Actualizar foto en todos los posts y comentarios
-      await updateUserPhotoInPosts(currentUser.uid, imageUrl);
-
-      // 3. Actualizar foto en los chats
-      await updateUserNameInChats(currentUser.uid, profile.name, imageUrl);
-
-      // 4. Actualizar localStorage
-      const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
-      storedUser.picture = imageUrl;
-      localStorage.setItem("user", JSON.stringify(storedUser));
-
-      setProfile({ ...profile, photo: imageUrl });
-    } catch (err) {
-      console.error(err);
-      alert("Error al actualizar foto");
-    } finally {
-      setUploadingPhoto(false);
-      setEditingPhoto(false);
-    }
-  };
-
-  // Reemplaza la función handlePhotoUpload con estas nuevas funciones
   const onSelectImage = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Validar tipo de archivo
     if (!file.type.startsWith("image/")) {
       alert("Por favor selecciona una imagen válida");
       return;
     }
 
-    // Validar tamaño (máx 5MB)
     if (file.size > 5 * 1024 * 1024) {
       alert("La imagen no debe pesar más de 5MB");
       return;
@@ -514,7 +639,6 @@ export default function ProfilePage() {
     const cropper = cropperRef.current?.cropper;
     if (!cropper) return null;
 
-    // Obtener la imagen recortada como canvas
     const canvas = cropper.getCroppedCanvas({
       width: 400,
       height: 400,
@@ -522,7 +646,6 @@ export default function ProfilePage() {
       imageSmoothingQuality: "high",
     });
 
-    // Convertir canvas a blob
     return new Promise((resolve) => {
       canvas.toBlob(
         (blob) => {
@@ -544,29 +667,19 @@ export default function ProfilePage() {
         type: "image/jpeg",
       });
 
-      // Usar uploadToS3 o uploadToImgBB según tengas configurado
       const imageUrl = await uploadToS3(croppedFile);
       const currentUser = getCurrentUser();
       if (!currentUser) throw new Error("No autenticado");
 
-      // 1. Actualizar perfil del usuario
       await updateProfile(currentUser.uid, { photo: imageUrl });
-
-      // 2. Actualizar foto en todos los posts y comentarios
       await updateUserPhotoInPosts(currentUser.uid, imageUrl);
-
-      // 3. Actualizar foto en los chats
       await updateUserNameInChats(currentUser.uid, profile.name, imageUrl);
 
-      // 4. Actualizar localStorage
       const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
       storedUser.picture = imageUrl;
       localStorage.setItem("user", JSON.stringify(storedUser));
 
-      // 5. Actualizar el estado del perfil
       setProfile({ ...profile, photo: imageUrl });
-
-      // 6. Cerrar modal
       setShowCropModal(false);
       setTempImageFile(null);
       setTempImagePreview(null);
@@ -585,7 +698,6 @@ export default function ProfilePage() {
     setEditingPhoto(false);
   };
 
-  // Agrega después de handleUpdateBio
   const handleUpdatePersonalInfo = async () => {
     setUpdating(true);
     try {
@@ -612,17 +724,12 @@ export default function ProfilePage() {
     }
   };
 
-  // Agrega después de handleUpdatePersonalInfo
-  const [editingName, setEditingName] = useState(false);
-  const [nameText, setNameText] = useState("");
-
   useEffect(() => {
     if (profile) {
       setNameText(profile.name || "");
     }
   }, [profile]);
 
-  // 4. Reemplazar handleUpdateBio
   const handleUpdateBio = async () => {
     setUpdating(true);
     try {
@@ -639,7 +746,6 @@ export default function ProfilePage() {
     }
   };
 
-  // 5. Reemplazar handleCoverPhotoUpload
   const handleCoverPhotoUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -658,7 +764,6 @@ export default function ProfilePage() {
     }
   };
 
-  // 6. Reemplazar handleCreateProject
   const handleCreateProject = async (e) => {
     e.preventDefault();
     if (!newProject.title || !newProject.description) return;
@@ -754,32 +859,6 @@ export default function ProfilePage() {
     };
   }, [uid, friendsIds]);
 
-  // ==================== LOG 5: Estado actual ====================
-  useEffect(() => {
-    console.log("📊 [ProfilePage] Estado actual:", {
-      uid,
-      loading,
-      error,
-      isOwnProfile,
-      profileExists: !!profile,
-      profileName: profile?.name,
-      postsCount: posts.length,
-      friendsIdsCount: friendsIds.length,
-      currentUserData: currentUserData?.uid,
-    });
-  }, [
-    uid,
-    loading,
-    error,
-    isOwnProfile,
-    profile,
-    posts,
-    friendsIds,
-    currentUserData,
-  ]);
-
-  // En las funciones de like, comment, delete, usa el currentUser de getCurrentUser()
-  // para asegurar que siempre esté actualizado:
   const toggleLike = async (postId, currentLikes) => {
     const currentUser = getCurrentUser();
     if (!currentUser) return;
@@ -800,7 +879,7 @@ export default function ProfilePage() {
     await set(newCommentRef, {
       userId: currentUser.uid,
       userName: currentUser.name,
-      userPhoto: currentUser.photo, // Usa photo
+      userPhoto: currentUser.photo,
       text: commentText,
       timestamp: Date.now(),
     });
@@ -817,7 +896,6 @@ export default function ProfilePage() {
     }
   };
 
-  const currentUser = auth.currentUser;
   // Renderizado condicional
   console.log(
     "🎨 [ProfilePage] Renderizando con loading =",
@@ -996,237 +1074,317 @@ export default function ProfilePage() {
                     )}
                   </div>
                 )}
-                {/*
-                <div
-                  className={`${role.color} px-3 py-1 rounded-full flex items-center gap-1 shadow-lg`}
-                >
-                  <span>{role.icon}</span>
-                  <span className="text-xs font-medium">{role.name}</span>
-                </div>
-                */}
-                </div>
+              </div>
               <p className="text-gray-400 text-sm mt-1">{profile.email}</p>
             </div>
           </div>
 
-          {/* Biografía */}
-          <div className="mb-8 p-4 bg-white/5 rounded-xl backdrop-blur-sm">
-            <div className="flex justify-between items-center mb-2">
-              <h3 className="text-white font-semibold">Biografía</h3>
-              {isOwnProfile && !editingBio && (
-                <button
-                  onClick={() => setEditingBio(true)}
-                  className="text-sm text-[#2e9b4f] hover:underline transition-all"
-                >
-                  <FaEdit className="inline mr-1 text-xs" /> Editar
-                </button>
-              )}
-            </div>
-            {editingBio ? (
-              <div className="flex gap-2">
-                <textarea
-                  value={bioText}
-                  onChange={(e) => setBioText(e.target.value)}
-                  className="flex-1 bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
-                  rows="3"
-                />
-                <button
-                  onClick={handleUpdateBio}
-                  disabled={updating}
-                  className="px-4 py-2 bg-gradient-to-r from-[#2e9b4f] to-[#1a6b3a] text-white rounded-xl text-sm font-medium hover:scale-105 transition-all"
-                >
-                  {updating ? <LoadingSpinner size="small" /> : "Guardar"}
-                </button>
-                <button
-                  onClick={() => setEditingBio(false)}
-                  className="px-4 py-2 bg-[#2a2a2a] text-white rounded-xl text-sm font-medium hover:bg-[#3a3a3a] transition-all"
-                >
-                  Cancelar
-                </button>
-              </div>
-            ) : (
-              <p className="text-gray-300 leading-relaxed">
-                {profile.bio ||
-                  "✨ Este usuario aún no ha escrito una biografía."}
-              </p>
-            )}
-          </div>
-
-          {/* Información Personal */}
-          <div className="mb-8 p-4 bg-white/5 rounded-xl backdrop-blur-sm">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-white font-semibold">Información Personal</h3>
-              {isOwnProfile && !editingPersonalInfo && (
-                <button
-                  onClick={() => setEditingPersonalInfo(true)}
-                  className="text-sm text-[#2e9b4f] hover:underline transition-all"
-                >
-                  <FaEdit className="inline mr-1 text-xs" /> Editar
-                </button>
-              )}
-            </div>
-
-            {editingPersonalInfo ? (
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <input
-                    type="date"
-                    value={personalInfo.birthDate}
-                    onChange={(e) =>
-                      setPersonalInfo({
-                        ...personalInfo,
-                        birthDate: e.target.value,
-                      })
-                    }
-                    placeholder="Fecha de nacimiento"
-                    className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
-                  />
-                  <input
-                    type="tel"
-                    value={personalInfo.phone}
-                    onChange={(e) =>
-                      setPersonalInfo({
-                        ...personalInfo,
-                        phone: e.target.value,
-                      })
-                    }
-                    placeholder="Teléfono"
-                    className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
-                  />
-                  <input
-                    type="text"
-                    value={personalInfo.department}
-                    onChange={(e) =>
-                      setPersonalInfo({
-                        ...personalInfo,
-                        department: e.target.value,
-                      })
-                    }
-                    placeholder="Departamento"
-                    className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
-                  />
-                  <input
-                    type="text"
-                    value={personalInfo.municipality}
-                    onChange={(e) =>
-                      setPersonalInfo({
-                        ...personalInfo,
-                        municipality: e.target.value,
-                      })
-                    }
-                    placeholder="Municipio"
-                    className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
-                  />
-                  <input
-                    type="text"
-                    value={personalInfo.university}
-                    onChange={(e) =>
-                      setPersonalInfo({
-                        ...personalInfo,
-                        university: e.target.value,
-                      })
-                    }
-                    placeholder="Universidad"
-                    className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
-                  />
-                  <input
-                    type="text"
-                    value={personalInfo.career}
-                    onChange={(e) =>
-                      setPersonalInfo({
-                        ...personalInfo,
-                        career: e.target.value,
-                      })
-                    }
-                    placeholder="Carrera"
-                    className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
-                  />
-                  <select
-                    value={personalInfo.relationshipStatus}
-                    onChange={(e) =>
-                      setPersonalInfo({
-                        ...personalInfo,
-                        relationshipStatus: e.target.value,
-                      })
-                    }
-                    className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
-                  >
-                    {relationshipOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex gap-2 pt-2">
-                  <button
-                    onClick={handleUpdatePersonalInfo}
-                    disabled={updating}
-                    className="px-4 py-2 bg-gradient-to-r from-[#2e9b4f] to-[#1a6b3a] text-white rounded-xl text-sm font-medium hover:scale-105 transition-all"
-                  >
-                    {updating ? "Guardando..." : "Guardar cambios"}
-                  </button>
-                  <button
-                    onClick={() => setEditingPersonalInfo(false)}
-                    className="px-4 py-2 bg-[#2a2a2a] text-white rounded-xl text-sm font-medium hover:bg-[#3a3a3a] transition-all"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <InfoItem
-                  label="Fecha de nacimiento"
-                  value={personalInfo.birthDate}
-                />
-                <InfoItem label="Teléfono" value={personalInfo.phone} />
-                <InfoItem
-                  label="Ubicación"
-                  value={`${personalInfo.department || ""} ${personalInfo.municipality ? `, ${personalInfo.municipality}` : ""}`}
-                />
-                <InfoItem label="Universidad" value={personalInfo.university} />
-                <InfoItem label="Carrera" value={personalInfo.career} />
-                <InfoItem
-                  label="Estado sentimental"
-                  value={personalInfo.relationshipStatus}
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Sección de Publicaciones */}
-          <div className="mb-8">
-            <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-              <span>📱</span> Publicaciones
-            </h3>
-            <div className="space-y-4">
-              {posts.length === 0 ? (
-                <div className="bg-white/5 rounded-xl p-8 text-center">
-                  <p className="text-gray-400">✨ No hay publicaciones aún</p>
-                  {isOwnProfile && (
-                    <p className="text-sm text-gray-500 mt-2">
-                      Comparte algo con la comunidad
-                    </p>
+          {isOwnProfile || friendRequestStatus === "friends" ? (
+            <>
+              {/* Biografía */}
+              <div className="mb-8 p-4 bg-white/5 rounded-xl backdrop-blur-sm">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-white font-semibold">Biografía</h3>
+                  {isOwnProfile && !editingBio && (
+                    <button
+                      onClick={() => setEditingBio(true)}
+                      className="text-sm text-[#2e9b4f] hover:underline transition-all"
+                    >
+                      <FaEdit className="inline mr-1 text-xs" /> Editar
+                    </button>
                   )}
                 </div>
-              ) : (
-                posts.map((post) => (
-                  <PostCard
-                    key={post.id}
-                    post={post}
-                    currentUserData={currentUserData}
-                    isOwnProfile={isOwnProfile}
-                    onDelete={deletePost}
-                    onLike={toggleLike}
-                    onComment={addComment}
-                    onNavigate={navigate}
-                    setExpandedImage={setExpandedImage}
-                  />
-                ))
-              )}
+                {editingBio ? (
+                  <div className="flex gap-2">
+                    <textarea
+                      value={bioText}
+                      onChange={(e) => setBioText(e.target.value)}
+                      className="flex-1 bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
+                      rows="3"
+                    />
+                    <button
+                      onClick={handleUpdateBio}
+                      disabled={updating}
+                      className="px-4 py-2 bg-gradient-to-r from-[#2e9b4f] to-[#1a6b3a] text-white rounded-xl text-sm font-medium hover:scale-105 transition-all"
+                    >
+                      {updating ? <LoadingSpinner size="small" /> : "Guardar"}
+                    </button>
+                    <button
+                      onClick={() => setEditingBio(false)}
+                      className="px-4 py-2 bg-[#2a2a2a] text-white rounded-xl text-sm font-medium hover:bg-[#3a3a3a] transition-all"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-gray-300 leading-relaxed">
+                    {profile.bio ||
+                      "✨ Este usuario aún no ha escrito una biografía."}
+                  </p>
+                )}
+              </div>
+
+              {/* Información Personal */}
+              <div className="mb-8 p-4 bg-white/5 rounded-xl backdrop-blur-sm">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-white font-semibold">
+                    Información Personal
+                  </h3>
+                  {isOwnProfile && !editingPersonalInfo && (
+                    <button
+                      onClick={() => setEditingPersonalInfo(true)}
+                      className="text-sm text-[#2e9b4f] hover:underline transition-all"
+                    >
+                      <FaEdit className="inline mr-1 text-xs" /> Editar
+                    </button>
+                  )}
+                </div>
+
+                {editingPersonalInfo ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <input
+                        type="date"
+                        value={personalInfo.birthDate}
+                        onChange={(e) =>
+                          setPersonalInfo({
+                            ...personalInfo,
+                            birthDate: e.target.value,
+                          })
+                        }
+                        placeholder="Fecha de nacimiento"
+                        className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
+                      />
+                      <input
+                        type="tel"
+                        value={personalInfo.phone}
+                        onChange={(e) =>
+                          setPersonalInfo({
+                            ...personalInfo,
+                            phone: e.target.value,
+                          })
+                        }
+                        placeholder="Teléfono"
+                        className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
+                      />
+                      <input
+                        type="text"
+                        value={personalInfo.department}
+                        onChange={(e) =>
+                          setPersonalInfo({
+                            ...personalInfo,
+                            department: e.target.value,
+                          })
+                        }
+                        placeholder="Departamento"
+                        className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
+                      />
+                      <input
+                        type="text"
+                        value={personalInfo.municipality}
+                        onChange={(e) =>
+                          setPersonalInfo({
+                            ...personalInfo,
+                            municipality: e.target.value,
+                          })
+                        }
+                        placeholder="Municipio"
+                        className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
+                      />
+                      <input
+                        type="text"
+                        value={personalInfo.university}
+                        onChange={(e) =>
+                          setPersonalInfo({
+                            ...personalInfo,
+                            university: e.target.value,
+                          })
+                        }
+                        placeholder="Universidad"
+                        className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
+                      />
+                      <input
+                        type="text"
+                        value={personalInfo.career}
+                        onChange={(e) =>
+                          setPersonalInfo({
+                            ...personalInfo,
+                            career: e.target.value,
+                          })
+                        }
+                        placeholder="Carrera"
+                        className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
+                      />
+                      <select
+                        value={personalInfo.relationshipStatus}
+                        onChange={(e) =>
+                          setPersonalInfo({
+                            ...personalInfo,
+                            relationshipStatus: e.target.value,
+                          })
+                        }
+                        className="bg-[#2a2a2a] text-white p-3 rounded-xl outline-none focus:ring-2 focus:ring-[#2e9b4f] transition-all"
+                      >
+                        {relationshipOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        onClick={handleUpdatePersonalInfo}
+                        disabled={updating}
+                        className="px-4 py-2 bg-gradient-to-r from-[#2e9b4f] to-[#1a6b3a] text-white rounded-xl text-sm font-medium hover:scale-105 transition-all"
+                      >
+                        {updating ? "Guardando..." : "Guardar cambios"}
+                      </button>
+                      <button
+                        onClick={() => setEditingPersonalInfo(false)}
+                        className="px-4 py-2 bg-[#2a2a2a] text-white rounded-xl text-sm font-medium hover:bg-[#3a3a3a] transition-all"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <InfoItem
+                      label="Fecha de nacimiento"
+                      value={personalInfo.birthDate}
+                    />
+                    <InfoItem label="Teléfono" value={personalInfo.phone} />
+                    <InfoItem
+                      label="Ubicación"
+                      value={`${personalInfo.department || ""} ${personalInfo.municipality ? `, ${personalInfo.municipality}` : ""}`}
+                    />
+                    <InfoItem
+                      label="Universidad"
+                      value={personalInfo.university}
+                    />
+                    <InfoItem label="Carrera" value={personalInfo.career} />
+                    <InfoItem
+                      label="Estado sentimental"
+                      value={personalInfo.relationshipStatus}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Sección de Publicaciones */}
+              <div className="mb-8">
+                <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                  <span>📱</span> Publicaciones
+                </h3>
+                <div className="space-y-4">
+                  {posts.length === 0 ? (
+                    <div className="bg-white/5 rounded-xl p-8 text-center">
+                      <p className="text-gray-400">
+                        ✨ No hay publicaciones aún
+                      </p>
+                      {isOwnProfile && (
+                        <p className="text-sm text-gray-500 mt-2">
+                          Comparte algo con la comunidad
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    posts.map((post) => (
+                      <PostCard
+                        key={post.id}
+                        post={post}
+                        currentUser={currentUser}
+                        isOwnProfile={isOwnProfile}
+                        onDelete={deletePost}
+                        onLike={toggleLike}
+                        onComment={addComment}
+                        onNavigate={navigate}
+                        setExpandedImage={setExpandedImage}
+                        showCommentInput={showCommentInput}
+                        setShowCommentInput={setShowCommentInput}
+                        commentText={commentText}
+                        setCommentText={setCommentText}
+                      />
+                    ))
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            /* 🔥 VISTA LIMITADA PARA NO AMIGOS */
+            <div className="text-center py-8">
+              <div className="flex flex-col items-center gap-4">
+                {friendRequestStatus === "none" && (
+                  <button
+                    onClick={sendFriendRequestToUser}
+                    disabled={sendingRequest}
+                    className="bg-[#2e9b4f] hover:bg-[#268e46] text-white px-6 py-2 rounded-full font-semibold transition disabled:opacity-50"
+                  >
+                    {sendingRequest ? "Enviando..." : "Agregar como amigo"}
+                  </button>
+                )}
+
+                {friendRequestStatus === "sent" && (
+                  <div className="text-center">
+                    <p className="text-gray-400 mb-2">
+                      Solicitud de amistad enviada
+                    </p>
+                    <button
+                      onClick={async () => {
+                        await set(
+                          ref(
+                            db,
+                            `users/${currentUser?.uid}/sentRequests/${uid}`,
+                          ),
+                          null,
+                        );
+                        await set(
+                          ref(
+                            db,
+                            `users/${uid}/receivedRequests/${currentUser?.uid}`,
+                          ),
+                          null,
+                        );
+                        setFriendRequestStatus("none");
+                        setPendingRequests((prev) => {
+                          const newState = { ...prev };
+                          delete newState[uid];
+                          return newState;
+                        });
+                      }}
+                      className="text-red-400 hover:text-red-500 text-sm"
+                    >
+                      Cancelar solicitud
+                    </button>
+                  </div>
+                )}
+
+                {friendRequestStatus === "pending" && (
+                  <div className="flex gap-3">
+                    <button
+                      onClick={acceptFriendRequestFromUser}
+                      disabled={sendingRequest}
+                      className="bg-[#2e9b4f] hover:bg-[#268e46] text-white px-6 py-2 rounded-full font-semibold transition"
+                    >
+                      Aceptar solicitud
+                    </button>
+                    <button
+                      onClick={rejectFriendRequestFromUser}
+                      className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-full font-semibold transition"
+                    >
+                      Rechazar
+                    </button>
+                  </div>
+                )}
+
+                <p className="text-gray-500 text-sm mt-4">
+                  Para ver más información de este perfil, primero deben ser
+                  amigos.
+                </p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Modal de recorte */}
@@ -1340,13 +1498,17 @@ const InfoItem = ({ label, value }) => (
 // Componente para posts (opcional, para mantener limpio el código)
 const PostCard = ({
   post,
-  currentUserData,
+  currentUser,
   isOwnProfile,
   onDelete,
   onLike,
   onComment,
   onNavigate,
   setExpandedImage,
+  showCommentInput,
+  setShowCommentInput,
+  commentText,
+  setCommentText,
 }) => (
   <div className="bg-white/5 rounded-xl overflow-hidden hover:bg-white/10 transition-all duration-300">
     {/* Header */}
@@ -1373,7 +1535,7 @@ const PostCard = ({
           </p>
         </div>
       </div>
-      {(isOwnProfile || post.userId === currentUserData?.uid) && (
+      {(isOwnProfile || post.userId === currentUser?.uid) && (
         <button
           onClick={() => onDelete(post.id)}
           className="text-gray-400 hover:text-red-500 transition-all duration-300"
@@ -1394,13 +1556,13 @@ const PostCard = ({
       <button
         onClick={() => onLike(post.id, post.likes)}
         className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 hover:scale-105 ${
-          post.likes?.[currentUserData?.uid]
+          post.likes?.[currentUser?.uid]
             ? "text-red-500"
             : "text-gray-400 hover:text-white"
         }`}
       >
         <FaHeart
-          className={post.likes?.[currentUserData?.uid] ? "fill-red-500" : ""}
+          className={post.likes?.[currentUser?.uid] ? "fill-red-500" : ""}
         />
         <span>{Object.keys(post.likes || {}).length}</span>
       </button>
@@ -1414,5 +1576,65 @@ const PostCard = ({
         <span>{Object.keys(post.comments || {}).length}</span>
       </button>
     </div>
+
+    {/* Comentarios */}
+    {showCommentInput === post.id && (
+      <div className="p-4 border-t border-white/10">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+            placeholder="Escribe un comentario..."
+            className="flex-1 bg-[#2a2a2a] text-white p-2 rounded-lg outline-none focus:ring-2 focus:ring-[#2e9b4f]"
+          />
+          <button
+            onClick={() => onComment(post.id)}
+            className="px-4 py-2 bg-gradient-to-r from-[#2e9b4f] to-[#1a6b3a] text-white rounded-lg font-medium hover:scale-105 transition-all"
+          >
+            Publicar
+          </button>
+        </div>
+      </div>
+    )}
+
+    {/* Lista de comentarios */}
+    {/* Lista de comentarios - SOLO se muestra cuando se hace clic en el botón de comentarios */}
+    {showCommentInput === post.id &&
+      post.comments &&
+      Object.keys(post.comments).length > 0 && (
+        <div className="px-4 pb-4 space-y-3 border-t border-white/10 mt-2">
+          <h4 className="text-white text-sm font-semibold pt-3"></h4>
+          {Object.entries(post.comments)
+            .sort((a, b) => b[1].timestamp - a[1].timestamp)
+            .slice(0, 5)
+            .map(([commentId, comment]) => (
+              <div key={commentId} className="flex gap-3">
+                <img
+                  src={comment.userPhoto}
+                  alt={comment.userName}
+                  className="w-8 h-8 rounded-full object-cover"
+                />
+                <div className="flex-1 bg-[#2a2a2a] rounded-lg p-2">
+                  <p className="font-semibold text-white text-sm">
+                    {comment.userName}
+                  </p>
+                  <p className="text-gray-300 text-sm">{comment.text}</p>
+                  <p className="text-gray-500 text-xs mt-1">
+                    {formatDistanceToNow(comment.timestamp, {
+                      addSuffix: true,
+                      locale: es,
+                    })}
+                  </p>
+                </div>
+              </div>
+            ))}
+          {Object.keys(post.comments).length > 5 && (
+            <button className="text-[#2e9b4f] text-sm hover:underline">
+              Ver más comentarios
+            </button>
+          )}
+        </div>
+      )}
   </div>
 );

@@ -9,6 +9,7 @@ import {
   acceptFriendRequest,
   searchUsers,
 } from "../firebaseService";
+import { useNavigate } from "react-router-dom";
 
 export default function FriendsManager({ user}) {
   const [search, setSearch] = useState("");
@@ -22,6 +23,7 @@ export default function FriendsManager({ user}) {
     message: "",
     type: "",
   });
+  const navigate = useNavigate();
 
   // Mostrar notificación temporal
   const showNotification = (message, type = "success") => {
@@ -334,7 +336,9 @@ export default function FriendsManager({ user}) {
                                 Mensaje
                               </button>
                               <span className="text-gray-600">•</span>
-                              <button className="text-xs text-gray-400 hover:text-white transition">
+                              <button className="text-xs text-gray-400 hover:text-white transition"
+                              onClick={() => navigate(`/profile/${friend.uid}`)}
+                              >
                                 Ver perfil
                               </button>
                             </div>

@@ -5,7 +5,7 @@ import { db } from "../firebase";
 import ChatList from "./ChatList";
 import ChatWindow from "./ChatWindow";
 
-export default function Chat({ currentUser }) {
+export default function Chat({ currentUser, setActiveTab }) {
   const [selectedFriend, setSelectedFriend] = useState(null);
 
   const handleSelectChat = async (
@@ -23,6 +23,7 @@ export default function Chat({ currentUser }) {
 
   const handleBack = () => {
     setSelectedFriend(null);
+    setActiveTab("home");
   };
 
   return (
