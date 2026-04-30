@@ -394,9 +394,9 @@ export default function Dashboard() {
         />
       )}
 
-      <div className={`w-full md:w-auto md:flex-1 ${activeTab === "messages" ? "h-full" : "h-[calc(100vh-7vh)]"}`}>
+      <div className={`w-full md:w-auto md:flex-1 ${activeTab === "messages" ? "h-full" : "h-[calc(100vh-7vh)] md:h-[100vh]"}`}>
         {activeTab === "home" && (
-          <div className="flex-1 h-full max-h-full overflow-y-auto bg-[#121212] pb-20 md:pb-0">
+          <div className="flex-1 h-full max-h-full overflow-y-auto bg-[#121212]  pb-20 md:pb-0">
             {/* Header Responsive */}
             <div className="w-full h-[10vh] md:h-[55px] sticky top-0 z-10 bg-[#121212]/95 backdrop-blur-sm">
               <div className="w-full h-full flex items-center px-3 md:px-4 pt-1 justify-between gap-3">
@@ -433,7 +433,7 @@ export default function Dashboard() {
                     alt=""
                   />
                 </div>
-                <div className="gap-2 flex items-center">
+                <div className="gap-2 flex items-center md:hidden">
                   <button
                     onClick={() => setActiveTab("messages")}
                     className={`flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-xl transition-all relative border-2 border-white`}
@@ -456,8 +456,8 @@ export default function Dashboard() {
             </div>
 
             {/* Stories Section - Responsive */}
-            <div className="w-full h-auto">
-              <div className="w-full h-auto flex items-center px-3 md:px-4 gap-2 md:gap-3 overflow-x-auto scrollbar-hide">
+            <div className="w-full flex-shrink-0 max-w-[600px]">
+              <div className="w-full flex items-center px-3 md:px-4 gap-2 md:gap-3 overflow-x-auto overflow-y-hidden scrollbar-hide">
                 {/* MI ESTADO - Siempre primero */}
                 <div
                   className="flex flex-col items-center hover:bg-[#393939]/60 hover:backdrop-blur-md transition-all rounded-xl cursor-pointer p-2 md:p-3 min-w-[70px] md:min-w-[90px] flex-shrink-0"
