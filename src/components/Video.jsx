@@ -36,6 +36,12 @@ const Video = ({ currentUser }) => {
   const [commentCounts, setCommentCounts] = useState({});
   const [friendStatuses, setFriendStatuses] = useState({});
   const [pendingRequests, setPendingRequests] = useState({});
+  // Después de los otros useState, agrega:
+  const [showLikeEffect, setShowLikeEffect] = useState({
+    visible: false,
+    x: 0,
+    y: 0,
+  });
 
   // Refs para videos
   const videoRefs = useRef({});
@@ -241,6 +247,38 @@ const Video = ({ currentUser }) => {
     } else {
       await set(likesRef, true);
     }
+  };
+
+  // Después de la función toggleLike, agrega:
+  let lastTap = 0;
+
+  const handleDoubleTap = (e, videoId, currentLikes) => {
+    const currentTime = new Date().getTime();
+    const tapLength = currentTime - lastTap;
+
+    if (tapLength < 300 && tapLength > 0) {
+      // Es un doble tap
+      e.stopPropagation();
+
+      // Obtener posición del tap para el efecto visual
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Mostrar efecto de like
+      setShowLikeEffect({ visible: true, x, y });
+      setTimeout(() => {
+        setShowLikeEffect({ visible: false, x: 0, y: 0 });
+      }, 500);
+
+      // Dar like solo si no está likeado
+      const likesObj = currentLikes || {};
+      if (!likesObj[currentUser.uid]) {
+        toggleLike(videoId, currentLikes);
+      }
+    }
+
+    lastTap = currentTime;
   };
 
   // Enviar solicitud de amistad
@@ -569,11 +607,33 @@ const Video = ({ currentUser }) => {
       ref={containerRef}
       className="h-screen overflow-y-scroll snap-y snap-mandatory bg-black"
     >
+      <LikeAnimation visible={showLikeEffect.visible} x={showLikeEffect.x} y={showLikeEffect.y} />
       {videos.map((video, index) => (
         <div
           key={video.id}
           data-video-id={index}
           className="video-item relative h-screen snap-start snap-always flex items-center justify-center"
+          onDoubleClick={(e) => handleDoubleTap(e, video.id, video.likes)}
+          onTouchStart={(e) => {
+            // Para dispositivos táctiles
+            const now = Date.now();
+            const lastTapTime = lastTap;
+            lastTap = now;
+            if (now - lastTapTime < 300) {
+              e.preventDefault();
+              const rect = e.currentTarget.getBoundingClientRect();
+              const touch = e.touches[0];
+              const x = touch.clientX - rect.left;
+              const y = touch.clientY - rect.top;
+              setShowLikeEffect({ visible: true, x, y });
+              setTimeout(() => {
+                setShowLikeEffect({ visible: false, x: 0, y: 0 });
+              }, 500);
+              if (!video.likes?.[currentUser.uid]) {
+                toggleLike(video.id, video.likes);
+              }
+            }
+          }}
         >
           <video
             ref={(el) => (videoRefs.current[index] = el)}
@@ -686,3 +746,21 @@ const Video = ({ currentUser }) => {
 };
 
 export default Video;
+
+// Agrega este componente antes del componente Video o afuera
+const LikeAnimation = ({ visible, x, y }) => {
+  if (!visible) return null;
+
+  return (
+    <div
+      className="fixed pointer-events-none z-50 animate-likeAnimation"
+      style={{
+        left: `${x}px`,
+        top: `${y}px`,
+        transform: "translate(-50%, -50%)",
+      }}
+    >
+      <FaHeart className="text-6xl text-red-500 fill-red-500 drop-shadow-2xl" />
+    </div>
+  );
+};

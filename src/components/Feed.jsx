@@ -48,7 +48,12 @@ const Feed = ({ currentUser }) => {
   const [uploading, setUploading] = useState(false);
   const [showCommentInput, setShowCommentInput] = useState(null);
   const [commentText, setCommentText] = useState("");
-  const [expandedMedia, setExpandedMedia] = useState(null);
+  // Reemplaza el estado actual de expandedMedia por:
+  const [expandedMedia, setExpandedMedia] = useState({
+    url: null,
+    index: 0,
+    mediaArray: [],
+  });
   const [showPostForm, setShowPostForm] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
   const [currentUploadFile, setCurrentUploadFile] = useState(null);
@@ -83,6 +88,11 @@ const Feed = ({ currentUser }) => {
     type: "",
   });
   const navigate = useNavigate();
+  // Zoom states
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomTranslate, setZoomTranslate] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   // Cargar amigos
   useEffect(() => {
@@ -538,6 +548,94 @@ const Feed = ({ currentUser }) => {
     }
   };
 
+  // Manejar zoom con rueda del mouse
+  const handleWheelZoom = (e) => {
+    if (
+      !expandedMedia.url ||
+      expandedMedia.mediaArray[expandedMedia.index]?.type === "video"
+    )
+      return;
+
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    const newZoom = Math.min(Math.max(zoomLevel + delta, 1), 4);
+    setZoomLevel(newZoom);
+
+    // Resetear posición si el zoom vuelve a 1
+    if (newZoom === 1) {
+      setZoomTranslate({ x: 0, y: 0 });
+    }
+  };
+
+  // Manejar inicio de arrastre para pan
+  const handleDragStart = (e) => {
+    if (zoomLevel <= 1) return;
+    setIsDragging(true);
+    setDragStart({
+      x: e.clientX - zoomTranslate.x,
+      y: e.clientY - zoomTranslate.y,
+    });
+  };
+
+  // Manejar arrastre para pan
+  const handleDragMove = (e) => {
+    if (!isDragging || zoomLevel <= 1) return;
+
+    const newX = e.clientX - dragStart.x;
+    const newY = e.clientY - dragStart.y;
+
+    // Limitar el movimiento basado en el nivel de zoom
+    const maxTranslate = (zoomLevel - 1) * 250;
+    const limitedX = Math.min(Math.max(newX, -maxTranslate), maxTranslate);
+    const limitedY = Math.min(Math.max(newY, -maxTranslate), maxTranslate);
+
+    setZoomTranslate({ x: limitedX, y: limitedY });
+  };
+
+  // Manejar fin de arrastre
+  const handleDragEnd = () => {
+    setIsDragging(false);
+  };
+
+  // Manejar zoom táctil (pinch)
+  const handleTouchZoom = (e) => {
+    if (
+      e.touches.length !== 2 ||
+      expandedMedia.mediaArray[expandedMedia.index]?.type === "video"
+    )
+      return;
+
+    e.preventDefault();
+    const touch1 = e.touches[0];
+    const touch2 = e.touches[1];
+    const distance = Math.hypot(
+      touch1.clientX - touch2.clientX,
+      touch1.clientY - touch2.clientY,
+    );
+
+    // Guardar distancia inicial
+    if (!window.initialPinchDistance) {
+      window.initialPinchDistance = distance;
+      window.initialZoomLevel = zoomLevel;
+      return;
+    }
+
+    const scale = distance / window.initialPinchDistance;
+    const newZoom = Math.min(Math.max(window.initialZoomLevel * scale, 1), 4);
+    setZoomLevel(newZoom);
+
+    if (newZoom === 1) {
+      setZoomTranslate({ x: 0, y: 0 });
+    }
+  };
+
+  // Resetear pinch
+  const handleTouchEnd = () => {
+    window.initialPinchDistance = null;
+    window.initialZoomLevel = null;
+    setIsDragging(false);
+  };
+
   const Carousel = ({ media, postId }) => {
     const total = media.length;
     const current = currentSlide[postId] || 0;
@@ -571,7 +669,14 @@ const Feed = ({ currentUser }) => {
           src={currentMedia.url}
           alt="post"
           className="w-full max-h-[500px] object-contain cursor-pointer"
-          onClick={() => setExpandedMedia(currentMedia.url)}
+          onClick={() =>
+            setExpandedMedia({
+              url: currentMedia.url,
+              index: current,
+              mediaArray: media,
+              postId: postId,
+            })
+          }
         />
       );
     }
@@ -588,9 +693,17 @@ const Feed = ({ currentUser }) => {
             src={currentMedia.url}
             alt="post"
             className="w-full max-h-[500px] object-contain cursor-pointer"
-            onClick={() => setExpandedMedia(currentMedia.url)}
+            onClick={() =>
+              setExpandedMedia({
+                url: currentMedia.url,
+                index: current,
+                mediaArray: media,
+                postId: postId,
+              })
+            }
           />
 
+          {/* Indicadores de slide */}
           <div className="absolute top-2 left-0 right-0 flex justify-center gap-1 z-10">
             {media.map((_, idx) => (
               <div
@@ -602,6 +715,7 @@ const Feed = ({ currentUser }) => {
             ))}
           </div>
 
+          {/* Botones de navegación */}
           {total > 1 && (
             <>
               <button
@@ -619,10 +733,12 @@ const Feed = ({ currentUser }) => {
             </>
           )}
 
+          {/* Contador */}
           <div className="absolute bottom-2 right-2 bg-black/50 rounded-full px-2 py-1 text-white text-xs">
             {current + 1}/{total}
           </div>
 
+          {/* Indicador móvil */}
           <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-white/50 text-xs md:hidden">
             ← Desliza →
           </div>
@@ -694,31 +810,123 @@ const Feed = ({ currentUser }) => {
   return (
     <div className="max-w-2xl mx-auto py-6 px-4">
       {/* Modal para media expandida */}
-      {expandedMedia && (
+      {/* Modal para media expandida con navegación */}
+      {expandedMedia.url && (
         <div
-          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center"
-          onClick={() => setExpandedMedia(null)}
+          className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center"
+          onClick={() => {
+            if (zoomLevel === 1) {
+              setExpandedMedia({ url: null, index: 0, mediaArray: [] });
+            }
+          }}
+          onWheel={handleWheelZoom}
+          onTouchMove={handleTouchZoom}
+          onTouchEnd={handleTouchEnd}
         >
-          {expandedMedia.match(/\.(mp4|webm|ogg)$/) ? (
-            <video
-              src={expandedMedia}
-              controls
-              autoPlay
-              className="max-w-[90vw] max-h-[90vh]"
-            />
-          ) : (
-            <img
-              src={expandedMedia}
-              alt="expandida"
-              className="max-w-[90vw] max-h-[90vh] object-contain"
-            />
-          )}
+          {/* Botón cerrar */}
           <button
-            className="absolute top-4 right-4 text-white text-3xl"
-            onClick={() => setExpandedMedia(null)}
+            className="absolute top-4 right-4 text-white text-3xl z-10 hover:scale-110 transition"
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpandedMedia({ url: null, index: 0, mediaArray: [] });
+              setZoomLevel(1);
+              setZoomTranslate({ x: 0, y: 0 });
+            }}
           >
             ✕
           </button>
+
+          {/* Contenedor de la media */}
+          <div
+            className="relative max-w-[90vw] max-h-[90vh]"
+            onMouseDown={handleDragStart}
+            onMouseMove={handleDragMove}
+            onMouseUp={handleDragEnd}
+            onMouseLeave={handleDragEnd}
+          >
+            {expandedMedia.mediaArray[expandedMedia.index]?.type === "video" ? (
+              <video
+                src={expandedMedia.url}
+                controls
+                autoPlay
+                className="max-w-[90vw] max-h-[90vh] object-contain"
+              />
+            ) : (
+              <img
+                src={expandedMedia.url}
+                alt="expandida"
+                className="max-w-[90vw] max-h-[90vh] object-contain"
+                style={{
+                  transform: `scale(${zoomLevel}) translate(${zoomTranslate.x / zoomLevel}px, ${zoomTranslate.y / zoomLevel}px)`,
+                  transition: isDragging ? "none" : "transform 0.2s ease-out",
+                  cursor: zoomLevel > 1 ? "grab" : "zoom-in",
+                }}
+                onMouseDown={(e) => {
+                  if (zoomLevel > 1) {
+                    e.preventDefault();
+                    handleDragStart(e);
+                  }
+                }}
+              />
+            )}
+          </div>
+
+          {/* Navegación entre imágenes (solo si hay más de una) */}
+          {expandedMedia.mediaArray.length > 1 &&
+            expandedMedia.mediaArray[expandedMedia.index]?.type !== "video" && (
+              <>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const newIndex =
+                      (expandedMedia.index -
+                        1 +
+                        expandedMedia.mediaArray.length) %
+                      expandedMedia.mediaArray.length;
+                    setExpandedMedia({
+                      ...expandedMedia,
+                      index: newIndex,
+                      url: expandedMedia.mediaArray[newIndex].url,
+                    });
+                    setZoomLevel(1); // Reset zoom al cambiar de imagen
+                    setZoomTranslate({ x: 0, y: 0 });
+                  }}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 rounded-full p-3 text-white hover:bg-black/70 transition hover:scale-110"
+                >
+                  <FaChevronLeft size={30} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const newIndex =
+                      (expandedMedia.index + 1) %
+                      expandedMedia.mediaArray.length;
+                    setExpandedMedia({
+                      ...expandedMedia,
+                      index: newIndex,
+                      url: expandedMedia.mediaArray[newIndex].url,
+                    });
+                    setZoomLevel(1); // Reset zoom al cambiar de imagen
+                    setZoomTranslate({ x: 0, y: 0 });
+                  }}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 rounded-full p-3 text-white hover:bg-black/70 transition hover:scale-110"
+                >
+                  <FaChevronRight size={30} />
+                </button>
+
+                {/* Indicador de posición */}
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 rounded-full px-3 py-1 text-white text-sm">
+                  {expandedMedia.index + 1} / {expandedMedia.mediaArray.length}
+                </div>
+              </>
+            )}
+
+          {/* Instrucciones de zoom */}
+          {expandedMedia.mediaArray[expandedMedia.index]?.type !== "video" && (
+            <div className="absolute bottom-20 left-1/2 -translate-x-1/2 text-white/50 text-xs bg-black/50 rounded-full px-3 py-1">
+              🖱️ Usa la rueda del mouse o pellizca para hacer zoom
+            </div>
+          )}
         </div>
       )}
 
