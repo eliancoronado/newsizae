@@ -7,6 +7,8 @@ import {
   FaEdit,
   FaCode,
   FaEllipsisV,
+  FaShare,
+  FaHistory,
 } from "react-icons/fa";
 import {
   getUserProjects,
@@ -18,6 +20,9 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
+import { FaTimes, FaCheck } from "react-icons/fa";
+import { getMyFriends } from "../firebaseService";
+import { shareProject, getProjectHistory } from "../utils/projectsService";
 
 const languageInfo = {
   waskart: { name: "Waskart", icon: "⚡", color: "from-blue-500 to-blue-600" },
@@ -40,6 +45,20 @@ export default function ProjectsPage({ currentUser }) {
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState(false);
+
+  // Nuevos estados
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [selectedProjectForShare, setSelectedProjectForShare] = useState(null);
+  const [friendsList, setFriendsList] = useState([]);
+  const [selectedFriend, setSelectedFriend] = useState(null);
+  const [selectedRole, setSelectedRole] = useState("editor");
+  const [sharing, setSharing] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [projectHistory, setProjectHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [showAccessDenied, setShowAccessDenied] = useState(false);
+  const [accessDeniedMessage, setAccessDeniedMessage] = useState("");
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
 
   useEffect(() => {
     if (!currentUser) {
@@ -71,6 +90,91 @@ export default function ProjectsPage({ currentUser }) {
     loadProjects();
   }, [currentUser]);
 
+  // Cargar amigos para compartir
+  const loadFriends = async () => {
+    try {
+      const friends = await getMyFriends(currentUser.uid);
+      setFriendsList(friends);
+    } catch (error) {
+      console.error("Error loading friends:", error);
+    }
+  };
+
+  // Abrir modal de compartir
+  const handleOpenShare = async (project, e) => {
+    e.stopPropagation();
+    setSelectedProjectForShare(project);
+    await loadFriends();
+    setShowShareModal(true);
+    setShowMenu(null);
+  };
+
+  // Compartir proyecto
+  const handleShareProject = async () => {
+    if (!selectedFriend || !selectedProjectForShare) return;
+
+    setSharing(true);
+    try {
+      await shareProject(
+        selectedProjectForShare.id,
+        currentUser.uid,
+        selectedFriend.uid,
+        selectedFriend.name,
+        selectedFriend.photo,
+        selectedRole,
+      );
+      alert(
+        `Proyecto compartido con ${selectedFriend.name} como ${selectedRole === "editor" ? "Editor" : "Lector"}`,
+      );
+      setShowShareModal(false);
+      setSelectedFriend(null);
+      setSelectedRole("editor");
+    } catch (error) {
+      console.error("Error sharing project:", error);
+      alert(error.message);
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  // Ver historial de cambios
+  const handleViewHistory = async (project, e) => {
+    e.stopPropagation();
+    setHistoryLoading(true);
+    setShowHistoryModal(true);
+    setShowMenu(null);
+
+    try {
+      const history = await getProjectHistory(project.id);
+      setProjectHistory(history);
+    } catch (error) {
+      console.error("Error loading history:", error);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  // Verificar acceso al proyecto
+  const handleProjectClick = async (project) => {
+    // Verificar si es el autor
+    if (project.authorId === currentUser.uid) {
+      navigate(`/project/${project.id}`);
+      return;
+    }
+
+    // Verificar si es editor compartido
+    if (project.isShared) {
+      navigate(`/project/${project.id}`);
+      return;
+    }
+
+    // Si llegamos aquí, no tiene acceso
+    setAccessDeniedMessage(
+      `No tienes permiso para acceder al proyecto "${project.name}". Solo el autor o usuarios con rol de editor pueden acceder.`,
+    );
+    setShowAccessDenied(true);
+  };
+
   const handleCreateProject = async () => {
     setCreating(true);
     try {
@@ -78,7 +182,11 @@ export default function ProjectsPage({ currentUser }) {
         "🚀 [ProjectsPage] Creando proyecto con lenguaje:",
         selectedLanguage,
       );
-      const newProject = await createProject(currentUser.uid, selectedLanguage);
+      const newProject = await createProject(
+        currentUser.uid,
+        selectedLanguage,
+        currentUser.name,
+      );
       console.log("✅ [ProjectsPage] Proyecto creado:", newProject);
       setProjects([newProject, ...projects]);
       setShowLanguageModal(false);
@@ -149,6 +257,216 @@ export default function ProjectsPage({ currentUser }) {
 
   return (
     <div className="max-h-full overflow-auto bg-gradient-to-br from-[#0a0a0f] via-[#0f1117] to-[#13151f]">
+      {/* Modal de acceso denegado */}
+      {showAccessDenied && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 animate-fadeIn">
+          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl w-full max-w-md mx-4 overflow-hidden shadow-2xl transform animate-scaleUp">
+            <div className="p-6 text-center">
+              <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <FaTimes className="text-5xl text-red-500" />
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-3">
+                Acceso Denegado
+              </h2>
+              <p className="text-gray-400 mb-6">{accessDeniedMessage}</p>
+              <button
+                onClick={() => setShowAccessDenied(false)}
+                className="px-6 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:shadow-lg transition"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de compartir */}
+      {showShareModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 animate-fadeIn">
+          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl w-full max-w-md mx-4 overflow-hidden shadow-2xl transform animate-scaleUp">
+            <div className="p-6">
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                  <FaShare className="text-2xl text-white" />
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-2">
+                  Compartir Proyecto
+                </h2>
+                <p className="text-gray-400 text-sm">
+                  Comparte "{selectedProjectForShare?.name}" con un amigo
+                </p>
+              </div>
+
+              {/* Selección de amigo */}
+              <div className="mb-4">
+                <label className="block text-white text-sm font-medium mb-2">
+                  Selecciona un amigo
+                </label>
+                <div className="max-h-48 overflow-y-auto space-y-2 bg-gray-700/30 rounded-xl p-2">
+                  {friendsList.length === 0 ? (
+                    <p className="text-gray-400 text-center py-4">
+                      No tienes amigos aún
+                    </p>
+                  ) : (
+                    friendsList.map((friend) => (
+                      <div
+                        key={friend.uid}
+                        onClick={() => setSelectedFriend(friend)}
+                        className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition ${
+                          selectedFriend?.uid === friend.uid
+                            ? "bg-blue-500/20 border-2 border-blue-500"
+                            : "bg-gray-700/50 hover:bg-gray-700"
+                        }`}
+                      >
+                        <img
+                          src={friend.photo || "https://via.placeholder.com/40"}
+                          alt={friend.name}
+                          className="w-10 h-10 rounded-full object-cover"
+                        />
+                        <div className="flex-1">
+                          <p className="text-white font-medium">
+                            {friend.name}
+                          </p>
+                          <p className="text-gray-400 text-xs">
+                            {friend.email}
+                          </p>
+                        </div>
+                        {selectedFriend?.uid === friend.uid && (
+                          <FaCheck className="text-blue-500" />
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Selección de rol */}
+              <div className="mb-6">
+                <label className="block text-white text-sm font-medium mb-2">
+                  Rol de acceso
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div
+                    onClick={() => setSelectedRole("editor")}
+                    className={`p-3 rounded-xl cursor-pointer transition text-center ${
+                      selectedRole === "editor"
+                        ? "bg-green-500/20 border-2 border-green-500"
+                        : "bg-gray-700/50 hover:bg-gray-700"
+                    }`}
+                  >
+                    <div className="text-2xl mb-1">✏️</div>
+                    <p className="text-white font-medium">Editor</p>
+                    <p className="text-gray-400 text-xs">
+                      Puede editar y guardar
+                    </p>
+                  </div>
+                  <div
+                    onClick={() => setSelectedRole("reader")}
+                    className={`p-3 rounded-xl cursor-pointer transition text-center ${
+                      selectedRole === "reader"
+                        ? "bg-blue-500/20 border-2 border-blue-500"
+                        : "bg-gray-700/50 hover:bg-gray-700"
+                    }`}
+                  >
+                    <div className="text-2xl mb-1">👁️</div>
+                    <p className="text-white font-medium">Lector</p>
+                    <p className="text-gray-400 text-xs">Solo puede ver</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowShareModal(false);
+                    setSelectedFriend(null);
+                  }}
+                  className="flex-1 px-4 py-2.5 bg-gray-700 text-white font-medium rounded-xl hover:bg-gray-600 transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleShareProject}
+                  disabled={!selectedFriend || sharing}
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-medium rounded-xl hover:shadow-lg transition disabled:opacity-50"
+                >
+                  {sharing ? "Compartiendo..." : "Compartir"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de historial */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 animate-fadeIn">
+          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl w-full max-w-lg mx-4 overflow-hidden shadow-2xl transform animate-scaleUp">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center">
+                    <FaHistory className="text-xl text-white" />
+                  </div>
+                  <h2 className="text-xl font-bold text-white">
+                    Historial de cambios
+                  </h2>
+                </div>
+                <button
+                  onClick={() => setShowHistoryModal(false)}
+                  className="text-gray-400 hover:text-white transition"
+                >
+                  <FaTimes className="text-xl" />
+                </button>
+              </div>
+
+              <div className="max-h-96 overflow-y-auto">
+                {historyLoading ? (
+                  <div className="text-center py-8">
+                    <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                  </div>
+                ) : projectHistory.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-400">
+                      No hay cambios registrados aún
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {projectHistory.map((record) => (
+                      <div
+                        key={record.id}
+                        className="bg-gray-700/30 rounded-xl p-4"
+                      >
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="w-8 h-8 bg-purple-500/20 rounded-full flex items-center justify-center">
+                            <span className="text-sm">📝</span>
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-white font-medium">
+                              {record.userName}
+                            </p>
+                            <p className="text-gray-400 text-sm">
+                              {record.action}
+                            </p>
+                          </div>
+                          <p className="text-xs text-gray-500">
+                            {formatDistanceToNow(record.timestamp, {
+                              addSuffix: true,
+                              locale: es,
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isAdmin ? (
         ""
       ) : (
@@ -326,7 +644,7 @@ export default function ProjectsPage({ currentUser }) {
               return (
                 <div
                   key={project.id}
-                  onClick={() => navigate(`/project/${project.id}`)}
+                  onClick={() => handleProjectClick(project)}
                   className="group relative bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl overflow-hidden hover:border-purple-500/50 hover:shadow-2xl hover:shadow-purple-500/10 transition-all duration-500 cursor-pointer animate-slideUp"
                   style={{ animationDelay: `${idx * 0.05}s` }}
                 >
@@ -359,6 +677,12 @@ export default function ProjectsPage({ currentUser }) {
                         <h3 className="text-white font-bold text-lg truncate group-hover:text-purple-400 transition-colors duration-300">
                           {project.name}
                         </h3>
+                        {project.isShared && (
+                          <p className="text-xs text-blue-400 mt-1 flex items-center gap-1">
+                            <FaShare className="text-[10px]" />
+                            Proyecto de {project.originalAuthor} (compartido)
+                          </p>
+                        )}
                         <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
                           <svg
                             className="w-3 h-3"
@@ -378,10 +702,16 @@ export default function ProjectsPage({ currentUser }) {
                       </div>
 
                       {/* Menu button mejorado */}
-                      <div className="relative">
+                      <div className="relative z-20">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
+                            const rect =
+                              e.currentTarget.getBoundingClientRect();
+                            setMenuPosition({
+                              top: rect.bottom + window.scrollY,
+                              left: rect.right - 160,
+                            });
                             setShowMenu(
                               showMenu === project.id ? null : project.id,
                             );
@@ -390,57 +720,6 @@ export default function ProjectsPage({ currentUser }) {
                         >
                           <FaEllipsisV className="text-sm" />
                         </button>
-
-                        {showMenu === project.id && (
-                          <div className="absolute right-0 mt-2 w-40 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl z-10 overflow-hidden animate-slideDown">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEditingProject(project);
-                                setNewProjectName(project.name);
-                                setShowMenu(null);
-                              }}
-                              className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-white hover:bg-gray-700 transition-colors duration-200"
-                            >
-                              <svg
-                                className="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                                />
-                              </svg>
-                              Renombrar
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteProject(project);
-                              }}
-                              className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-red-400 hover:bg-gray-700 transition-colors duration-200"
-                            >
-                              <svg
-                                className="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                />
-                              </svg>
-                              Eliminar
-                            </button>
-                          </div>
-                        )}
                       </div>
                     </div>
 
@@ -696,6 +975,74 @@ export default function ProjectsPage({ currentUser }) {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Menú flotante usando portal */}
+      {showMenu && (
+        <div
+          className="fixed bg-gray-800 border border-gray-700 rounded-xl shadow-2xl z-[100] overflow-hidden animate-slideDown"
+          style={{
+            position: "fixed",
+            top: menuPosition.top,
+            left: menuPosition.left,
+            width: "176px",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => {
+              const project = projects.find((p) => p.id === showMenu);
+              if (project) {
+                setEditingProject(project);
+                setNewProjectName(project.name);
+                setShowMenu(null);
+              }
+            }}
+            className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-white hover:bg-gray-700 transition-colors duration-200"
+          >
+            <FaEdit className="text-xs" />
+            Renombrar
+          </button>
+          <button
+            onClick={() => {
+              const project = projects.find((p) => p.id === showMenu);
+              if (project)
+                handleOpenShare(project, { stopPropagation: () => {} });
+            }}
+            className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-white hover:bg-gray-700 transition-colors duration-200"
+          >
+            <FaShare className="text-xs" />
+            Compartir
+          </button>
+          {(() => {
+            const project = projects.find((p) => p.id === showMenu);
+            return (
+              project?.authorId === currentUser.uid && (
+                <button
+                  onClick={() => {
+                    const project = projects.find((p) => p.id === showMenu);
+                    if (project)
+                      handleViewHistory(project, { stopPropagation: () => {} });
+                  }}
+                  className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-white hover:bg-gray-700 transition-colors duration-200"
+                >
+                  <FaHistory className="text-xs" />
+                  Historial
+                </button>
+              )
+            );
+          })()}
+          <button
+            onClick={() => {
+              const project = projects.find((p) => p.id === showMenu);
+              if (project) handleDeleteProject(project);
+            }}
+            className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-red-400 hover:bg-gray-700 transition-colors duration-200"
+          >
+            <FaTrash className="text-xs" />
+            Eliminar
+          </button>
         </div>
       )}
 

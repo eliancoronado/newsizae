@@ -38,7 +38,9 @@ const CentralPanel = ({
   contextMenu,
   setContextMenu,
   setDeviceShow,
-  urlqr
+  urlqr,
+  isReadOnly,
+  canEdit
 }) => {
   const [color, setColor] = useState("dfdfdf");
   const [backgroundColor, setBackgroundColor] = useState("#dfdfdf");
@@ -387,7 +389,7 @@ const CentralPanel = ({
 
   return (
     <div
-      className="w-full h-screen max-h-screen min-h-screen overflow-hidden col-span-2 relative flex items-center justify-center"
+      className={canEdit ? "w-full h-screen max-h-screen min-h-screen overflow-hidden col-span-2 relative flex items-center justify-center" : "w-full h-screen max-h-screen min-h-screen overflow-hidden col-span-4 relative flex items-center justify-center"}
       style={{ backgroundColor: backgroundColor }}
       onMouseMove={handleMouseMove}
       onTouchMove={handleMove}
