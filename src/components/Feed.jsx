@@ -93,6 +93,8 @@ const Feed = ({ currentUser }) => {
   const [zoomTranslate, setZoomTranslate] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  // Después de los otros useState, agrega:
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
 
   // Cargar amigos
   useEffect(() => {
@@ -436,6 +438,7 @@ const Feed = ({ currentUser }) => {
     }
 
     setUploading(true);
+    setIsUploadingMedia(true); // Deshabilitar botón de publicar
     const uploadedMedia = [];
 
     for (const file of files) {
@@ -454,12 +457,12 @@ const Feed = ({ currentUser }) => {
           uploadedMedia.push({ type: "video", url, file });
         } else if (file.type.startsWith("image/")) {
           setUploadType("image");
-          url = await uploadToS3(file);
-          // Simular progreso para imágenes
-          for (let i = 0; i <= 100; i += 20) {
-            setUploadProgress(i);
+          // Actualizar progreso para imágenes
+          for (let progress = 0; progress <= 100; progress += 10) {
+            setUploadProgress(progress);
             await new Promise((resolve) => setTimeout(resolve, 50));
           }
+          url = await uploadToS3(file);
           uploadedMedia.push({ type: "image", url, file });
         }
       } catch (error) {
@@ -470,6 +473,7 @@ const Feed = ({ currentUser }) => {
 
     setNewPostMedia([...newPostMedia, ...uploadedMedia]);
     setUploading(false);
+    setIsUploadingMedia(false); // Re-habilitar botón de publicar
     setUploadProgress(null);
     setCurrentUploadFile(null);
     setUploadType(null);
@@ -1058,6 +1062,7 @@ const Feed = ({ currentUser }) => {
               <button
                 onClick={closePostForm}
                 className="text-gray-400 hover:text-white"
+                disabled={uploading || isUploadingMedia}
               >
                 <FaTimes className="text-xl" />
               </button>
@@ -1071,7 +1076,44 @@ const Feed = ({ currentUser }) => {
                 className="w-full bg-[#3A3B3C] text-white p-3 rounded-lg resize-none focus:outline-none"
                 rows="4"
                 autoFocus
+                disabled={uploading || isUploadingMedia}
               />
+
+              {(uploading || isUploadingMedia) && uploadProgress !== null && (
+                <div className="mt-3 bg-[#3A3B3C] rounded-lg p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <div className="w-10 h-10 rounded-full border-2 border-gray-600">
+                        <div
+                          className="absolute top-0 left-0 rounded-full border-t-2 border-[#2e9b4f]"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            transform: `rotate(${uploadProgress * 3.6}deg)`,
+                          }}
+                        />
+                      </div>
+                      <span className="absolute inset-0 flex items-center justify-center text-white text-xs font-bold">
+                        {uploadProgress}%
+                      </span>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-white text-sm font-semibold">
+                        Subiendo {uploadType === "video" ? "video" : "imagen"}
+                      </p>
+                      <p className="text-gray-400 text-xs truncate max-w-[180px]">
+                        {currentUploadFile}
+                      </p>
+                      <div className="w-full bg-gray-700 rounded-full h-1.5 mt-1">
+                        <div
+                          className="bg-[#2e9b4f] h-1.5 rounded-full transition-all duration-300"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="flex flex-wrap gap-2 mt-2">
                 {newPostMedia.map((media, idx) => (
@@ -1091,6 +1133,7 @@ const Feed = ({ currentUser }) => {
                     <button
                       onClick={() => removeMedia(idx)}
                       className="absolute -top-2 -right-2 bg-red-500 rounded-full p-1"
+                      disabled={uploading || isUploadingMedia}
                     >
                       <FaTimes className="w-3 h-3 text-white" />
                     </button>
@@ -1105,7 +1148,9 @@ const Feed = ({ currentUser }) => {
 
               <div className="flex justify-between items-center mt-4">
                 <div className="flex gap-2">
-                  <label className="bg-[#3A3B3C] p-2 rounded-full cursor-pointer">
+                  <label
+                    className={`bg-[#3A3B3C] p-2 rounded-full cursor-pointer ${uploading || isUploadingMedia ? "opacity-50 cursor-not-allowed" : "hover:bg-[#4A4B4C]"} transition`}
+                  >
                     <FaImages className="text-[#2e9b4f] text-xl" />
                     <input
                       type="file"
@@ -1113,7 +1158,7 @@ const Feed = ({ currentUser }) => {
                       accept="image/*,video/*"
                       onChange={handleMediaUpload}
                       className="hidden"
-                      disabled={uploading}
+                      disabled={uploading || isUploadingMedia}
                     />
                   </label>
                   <select
@@ -1127,10 +1172,27 @@ const Feed = ({ currentUser }) => {
                 </div>
                 <button
                   onClick={createPost}
-                  className="bg-[#2e9b4f] px-6 py-2 rounded-full font-semibold"
-                  disabled={!newPostContent.trim() && newPostMedia.length === 0}
+                  disabled={
+                    (!newPostContent.trim() && newPostMedia.length === 0) ||
+                    uploading ||
+                    isUploadingMedia
+                  }
+                  className={`px-6 py-2 rounded-full font-semibold transition ${
+                    (!newPostContent.trim() && newPostMedia.length === 0) ||
+                    uploading ||
+                    isUploadingMedia
+                      ? "bg-gray-600 cursor-not-allowed opacity-50"
+                      : "bg-[#2e9b4f] hover:bg-[#268e46]"
+                  }`}
                 >
-                  Publicar
+                  {uploading || isUploadingMedia ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Subiendo...
+                    </div>
+                  ) : (
+                    "Publicar"
+                  )}
                 </button>
               </div>
             </div>
