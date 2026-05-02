@@ -193,52 +193,221 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, [user]);
 
-    // 🔥 PRIMERO: Esperar a que Firebase Auth termine de inicializar
+  // 🔥 PRIMERO: Verificar si hay login por API en localStorage
   useEffect(() => {
-    // Escuchar el estado de autenticación
+    const checkApiLogin = async () => {
+      const apiLogin = localStorage.getItem("apiLogin");
+      const storedUser = localStorage.getItem("user");
+
+      if (apiLogin === "true" && storedUser) {
+        console.log("🔐 Login por API detectado");
+        const userData = JSON.parse(storedUser);
+
+        // Crear un usuario simulado para Firebase Auth (opcional)
+        // No necesitamos Firebase Auth real, solo los datos
+        setUser({
+          uid: userData.uid,
+          name: userData.name,
+          email: userData.email,
+          picture: userData.picture,
+          bio: userData.bio || "",
+          role: userData.role || "bronze",
+          coverPhoto: null,
+          projects: [],
+        });
+
+        setLoading(false);
+        setIsAuthInitialized(true);
+        return true; // Indica que es login por API
+      }
+      return false;
+    };
+
+    checkApiLogin();
+  }, []);
+
+  // 🔥 PRIMERO: Esperar a que Firebase Auth termine de inicializar
+  // 🔥 SEGUNDO: Esperar a que Firebase Auth termine de inicializar (solo para login normal)
+  useEffect(() => {
+    // Si ya hay login por API, no procesar Firebase Auth
+    const apiLogin = localStorage.getItem("apiLogin");
+    if (apiLogin === "true") {
+      console.log("⏭️ Saltando Firebase Auth por API Login");
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       console.log("🔐 Auth state changed:", firebaseUser?.uid);
-      setIsAuthInitialized(true); // Marcar que la autenticación ya se inicializó
-      
+      setIsAuthInitialized(true);
+
       if (!firebaseUser) {
         console.log("❌ No authenticated user");
-        // Limpiar localStorage si no hay usuario autenticado
         localStorage.removeItem("user");
         localStorage.removeItem("token");
+        localStorage.removeItem("apiLogin");
         navigate("/");
       }
     });
-    
+
     return () => unsubscribe();
   }, [navigate]);
 
   // 🔥 SEGUNDO: Cargar datos del usuario SOLO después de que Auth esté inicializado
+  // En Dashboard.jsx, modifica el useEffect de autenticación:
+
+  // 🔥 PRIMERO: Verificar si hay login por API en localStorage
   useEffect(() => {
-    // No hacer nada hasta que la autenticación esté inicializada
-    if (!isAuthInitialized) return;
-    
-    const loadUserData = async () => {
-      const firebaseUser = auth.currentUser;
-      
+    const checkApiLogin = async () => {
+      const apiLogin = localStorage.getItem("apiLogin");
+      const storedUser = localStorage.getItem("user");
+
+      if (apiLogin === "true" && storedUser) {
+        console.log("🔐 Login por API detectado");
+        const userData = JSON.parse(storedUser);
+
+        // Crear un usuario simulado para Firebase Auth (opcional)
+        // No necesitamos Firebase Auth real, solo los datos
+        setUser({
+          uid: userData.uid,
+          name: userData.name,
+          email: userData.email,
+          picture: userData.picture,
+          bio: userData.bio || "",
+          role: userData.role || "bronze",
+          coverPhoto: null,
+          projects: [],
+        });
+
+        setLoading(false);
+        setIsAuthInitialized(true);
+        return true; // Indica que es login por API
+      }
+      return false;
+    };
+
+    checkApiLogin();
+  }, []);
+
+  // 🔥 SEGUNDO: Esperar a que Firebase Auth termine de inicializar (solo para login normal)
+  useEffect(() => {
+    // Si ya hay login por API, no procesar Firebase Auth
+    const apiLogin = localStorage.getItem("apiLogin");
+    if (apiLogin === "true") {
+      console.log("⏭️ Saltando Firebase Auth por API Login");
+      return;
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      console.log("🔐 Auth state changed:", firebaseUser?.uid);
+      setIsAuthInitialized(true);
+
       if (!firebaseUser) {
-        console.log("⚠️ No user after auth initialization");
+        console.log("❌ No authenticated user");
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+        localStorage.removeItem("apiLogin");
+        navigate("/");
+      }
+    });
+
+    return () => unsubscribe();
+  }, [navigate]);
+
+  // 🔥 TERCERO: Cargar datos del usuario (funciona para ambos casos)
+  useEffect(() => {
+    if (!isAuthInitialized) return;
+
+    const loadUserData = async () => {
+      // Verificar API login primero
+      const apiLogin = localStorage.getItem("apiLogin");
+      const storedUser = localStorage.getItem("user");
+
+      if (apiLogin === "true" && storedUser) {
+        const userData = JSON.parse(storedUser);
+        console.log("✅ Usuario por API:", userData);
+
+        // Asegurar que el usuario existe en Firebase DB
+        try {
+          const userRef = ref(db, `users/${userData.uid}`);
+          const snapshot = await get(userRef);
+
+          if (!snapshot.exists()) {
+            await set(userRef, {
+              uid: userData.uid,
+              email: userData.email || "",
+              name: userData.name || "Usuario",
+              photo: userData.picture || "",
+              bio: "Hola, estoy usando esta increíble app",
+              role: "bronze",
+              coverPhoto: null,
+              projects: [],
+              friends: {},
+              sentRequests: {},
+              receivedRequests: {},
+              createdAt: Date.now(),
+              lastSeen: Date.now(),
+            });
+          }
+
+          // Actualizar datos del usuario
+          const freshUserData = await getUserData(userData.uid);
+          if (freshUserData) {
+            setUser({
+              uid: userData.uid,
+              name: freshUserData.name,
+              email: freshUserData.email,
+              picture: freshUserData.photo,
+              bio: freshUserData.bio || "",
+              role: freshUserData.role || "bronze",
+              coverPhoto: freshUserData.coverPhoto || null,
+              projects: freshUserData.projects || [],
+            });
+          } else {
+            setUser({
+              uid: userData.uid,
+              name: userData.name,
+              email: userData.email,
+              picture: userData.picture,
+              bio: "",
+              role: "bronze",
+              coverPhoto: null,
+              projects: [],
+            });
+          }
+        } catch (error) {
+          console.error("Error syncing API user to DB:", error);
+          setUser({
+            uid: userData.uid,
+            name: userData.name,
+            email: userData.email,
+            picture: userData.picture,
+            bio: "",
+            role: "bronze",
+            coverPhoto: null,
+            projects: [],
+          });
+        }
+
+        setLoading(false);
+        return;
+      }
+
+      // Login normal con Firebase
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) {
         setLoading(false);
         return;
       }
 
       setLoading(true);
       try {
-        // Obtener datos del usuario desde Firebase
         const userData = await getUserData(firebaseUser.uid);
-
         if (!userData) {
-          console.error("User data not found in Firebase");
           await auth.signOut();
           navigate("/");
           return;
         }
 
-        console.log("✅ User data from Firebase:", userData);
         setUser({
           uid: firebaseUser.uid,
           name: userData.name,
@@ -250,7 +419,6 @@ export default function Dashboard() {
           projects: userData.projects || [],
         });
 
-        // Activar presencia
         setupPresence(firebaseUser);
       } catch (error) {
         console.error("Error fetching user data:", error);
@@ -354,7 +522,16 @@ export default function Dashboard() {
 
   const logout = async () => {
     try {
-      await auth.signOut();
+      // Limpiar localStorage
+      localStorage.removeItem("user");
+      localStorage.removeItem("token");
+      localStorage.removeItem("apiLogin");
+
+      // Cerrar sesión de Firebase solo si hay usuario autenticado
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        await auth.signOut();
+      }
       navigate("/");
     } catch (error) {
       console.error("Error signing out:", error);
@@ -394,7 +571,9 @@ export default function Dashboard() {
         />
       )}
 
-      <div className={`w-full md:w-auto md:flex-1 ${activeTab === "messages" ? "h-full" : "h-[calc(100vh-7vh)] md:h-[100vh]"}`}>
+      <div
+        className={`w-full md:w-auto md:flex-1 ${activeTab === "messages" ? "h-full" : "h-[calc(100vh-7vh)] md:h-[100vh]"}`}
+      >
         {activeTab === "home" && (
           <div className="flex-1 h-full max-h-full overflow-y-auto bg-[#121212]  pb-20 md:pb-0">
             {/* Header Responsive */}
@@ -571,22 +750,23 @@ export default function Dashboard() {
         {activeTab === "reels" && <Video currentUser={user} />}
         {activeTab === "projects" && <ProjectsPage currentUser={user} />}
         {activeTab === "community" && <FriendsManager user={user} />}
-        {activeTab === "messages" && <Chat setActiveTab={setActiveTab} currentUser={user} />}
+        {activeTab === "messages" && (
+          <Chat setActiveTab={setActiveTab} currentUser={user} />
+        )}
 
         {/* BottomBar - Solo visible en móvil */}
       </div>
       {activeTab === "messages" ? (
-        <>
-        </>
+        <></>
       ) : (
         <BottomBar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        totalUnread={totalUnread}
-        user={user}
-      />
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          totalUnread={totalUnread}
+          user={user}
+        />
       )}
-      
+
       {showReelUploader && (
         <ReelUploader
           currentUser={user}

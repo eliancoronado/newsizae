@@ -92,12 +92,13 @@ const Login = () => {
   }
 
   // Función para iniciar sesión con API Key
+  // Función para iniciar sesión con API Key
   const loginWithApiKey = async () => {
     setLoadingApi(true);
     setApiError(null);
 
     try {
-      // Parsear el input (espera formato: {"user": {...}, "token": "..."} o similar)
+      // Parsear el input
       let parsedData;
       try {
         parsedData = JSON.parse(apiKeyInput);
@@ -105,15 +106,12 @@ const Login = () => {
         throw new Error("Formato inválido. Debe ser un JSON válido");
       }
 
-      // Validar estructura
-      let userData, token;
-
       // Soporta diferentes formatos
+      let userData, token;
       if (parsedData.user && parsedData.token) {
         userData = parsedData.user;
         token = parsedData.token;
       } else if (parsedData.uid && parsedData.email) {
-        // Si es solo el objeto usuario, asumimos que el token está en otro campo
         userData = parsedData;
         token = parsedData.token || parsedData.accessToken;
       } else {
@@ -122,12 +120,11 @@ const Login = () => {
         );
       }
 
-      // Validar que tenga los campos mínimos
       if (!userData.uid) {
         throw new Error("El usuario debe tener un campo 'uid'");
       }
 
-      // Guardar en localStorage
+      // 🔥 IMPORTANTE: Guardar en localStorage ANTES de navegar
       localStorage.setItem(
         "user",
         JSON.stringify({
@@ -136,17 +133,18 @@ const Login = () => {
           email: userData.email || "",
           picture:
             userData.photo || userData.photoURL || userData.picture || "",
+          _apiLogin: true, // Marcar que es login por API
         }),
       );
       localStorage.setItem("token", token);
+      localStorage.setItem("apiLogin", "true"); // Flag para saber que es login por API
 
-      // Verificar/crear usuario en Firebase Database (opcional)
+      // Verificar/crear usuario en Firebase Database
       try {
         const userRef = ref(db, `users/${userData.uid}`);
         const snapshot = await get(userRef);
 
         if (!snapshot.exists()) {
-          // Crear usuario si no existe
           await set(userRef, {
             uid: userData.uid,
             email: userData.email || "",
@@ -166,10 +164,9 @@ const Login = () => {
         }
       } catch (dbError) {
         console.warn("Error al verificar/crear usuario en DB:", dbError);
-        // No bloqueamos el login si falla la DB
       }
 
-      // Redirigir
+      // 🔥 Redirigir directamente sin esperar Firebase Auth
       navigate("/dashboard");
     } catch (error) {
       console.error("Error con API Key:", error);
