@@ -554,7 +554,7 @@ export default function Dashboard() {
   if (!user) return null;
 
   return (
-    <div className="h-screen bg-[#121212] flex relative">
+    <div className="h-[100dvh] bg-[#121212] flex relative">
       {notification && (
         <NotificationToast
           notification={notification}
