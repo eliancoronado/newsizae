@@ -1400,7 +1400,10 @@ const Feed = ({ currentUser }) => {
             <p className="px-4 pb-2 text-white">{post.content}</p>
             {post.isShared && post.sharedPost && (
               <div className="px-4 pb-2">
-                <SharedPostCard sharedPost={post.sharedPost} />
+                <SharedPostCard
+                  sharedPost={post.sharedPost}
+                  onImageClick={setExpandedMedia}
+                />
               </div>
             )}
 
@@ -1678,25 +1681,104 @@ const Feed = ({ currentUser }) => {
 export default Feed;
 
 // Componente para mostrar el post original dentro del post compartido
-const SharedPostCard = ({ sharedPost }) => {
-  const [currentSlide, setCurrentSlide] = useState(0);
-  const navigate = useNavigate();
-
+// Componente para mostrar el post original dentro del post compartido (usando el mismo Carousel)
+const SharedPostCard = ({ sharedPost, onImageClick }) => {
+  const [sharedCurrentSlide, setSharedCurrentSlide] = useState(0);
   const totalMedia = sharedPost.originalMedia?.length || 0;
 
-  const nextSlide = () => {
-    setCurrentSlide((prev) => (prev + 1) % totalMedia);
+  const nextSlide = (e) => {
+    e.stopPropagation();
+    setSharedCurrentSlide((prev) => (prev + 1) % totalMedia);
   };
 
-  const prevSlide = () => {
-    setCurrentSlide((prev) => (prev - 1 + totalMedia) % totalMedia);
+  const prevSlide = (e) => {
+    e.stopPropagation();
+    setSharedCurrentSlide((prev) => (prev - 1 + totalMedia) % totalMedia);
   };
 
+  const currentMedia = sharedPost.originalMedia?.[sharedCurrentSlide];
+
+  if (totalMedia === 0) {
+    // Si no hay media, solo mostrar el contenido
+    return (
+      <div className="mt-3 border border-gray-700 rounded-xl overflow-hidden bg-gray-800/30">
+        {/* Header del post original */}
+        <div className="flex items-center gap-2 p-3 bg-gray-800/50">
+          <img
+            src={sharedPost.originalUserPhoto}
+            alt={sharedPost.originalUserName}
+            className="w-6 h-6 rounded-full object-cover"
+          />
+          <span className="text-xs text-gray-400">
+            {sharedPost.originalUserName}
+          </span>
+          <span className="text-xs text-gray-500">•</span>
+          <span className="text-xs text-gray-500">
+            {formatDistanceToNow(sharedPost.originalTimestamp, {
+              addSuffix: true,
+              locale: es,
+            })}
+          </span>
+        </div>
+        {/* Contenido del post original */}
+        {sharedPost.originalContent && (
+          <p className="px-3 pb-3 text-sm text-gray-300">
+            {sharedPost.originalContent}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  if (totalMedia === 1) {
+    // Una sola imagen - similar al Carousel original
+    return (
+      <div className="mt-3 border border-gray-700 rounded-xl overflow-hidden bg-gray-800/30">
+        {/* Header del post original */}
+        <div className="flex items-center gap-2 p-3 bg-gray-800/50">
+          <img
+            src={sharedPost.originalUserPhoto}
+            alt={sharedPost.originalUserName}
+            className="w-6 h-6 rounded-full object-cover"
+          />
+          <span className="text-xs text-gray-400">
+            {sharedPost.originalUserName}
+          </span>
+          <span className="text-xs text-gray-500">•</span>
+          <span className="text-xs text-gray-500">
+            {formatDistanceToNow(sharedPost.originalTimestamp, {
+              addSuffix: true,
+              locale: es,
+            })}
+          </span>
+        </div>
+        {/* Contenido del post original */}
+        {sharedPost.originalContent && (
+          <p className="px-3 pb-2 text-sm text-gray-300">
+            {sharedPost.originalContent}
+          </p>
+        )}
+        {/* Media del post original */}
+        <img
+          src={currentMedia.url}
+          alt="shared content"
+          className="w-full max-h-96 object-contain cursor-pointer"
+          onClick={() =>
+            onImageClick({
+              url: currentMedia.url,
+              index: 0,
+              mediaArray: sharedPost.originalMedia,
+              postId: sharedPost.originalPostId,
+            })
+          }
+        />
+      </div>
+    );
+  }
+
+  // Múltiples imágenes - carrusel completo
   return (
-    <div
-      className="mt-3 border border-gray-700 rounded-xl overflow-hidden bg-gray-800/30 cursor-pointer hover:bg-gray-800/50 transition"
-      onClick={() => navigate(`/post/${sharedPost.originalPostId}`)}
-    >
+    <div className="mt-3 border border-gray-700 rounded-xl overflow-hidden bg-gray-800/30">
       {/* Header del post original */}
       <div className="flex items-center gap-2 p-3 bg-gray-800/50">
         <img
@@ -1723,41 +1805,53 @@ const SharedPostCard = ({ sharedPost }) => {
         </p>
       )}
 
-      {/* Media del post original */}
-      {totalMedia > 0 && (
-        <div className="relative">
-          <img
-            src={sharedPost.originalMedia[currentSlide]?.url}
-            alt="shared content"
-            className="w-full max-h-96 object-contain"
-          />
-          {totalMedia > 1 && (
-            <>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  prevSlide();
-                }}
-                className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 rounded-full p-1 text-white hover:bg-black/70"
-              >
-                <FaChevronLeft size={16} />
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  nextSlide();
-                }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 rounded-full p-1 text-white hover:bg-black/70"
-              >
-                <FaChevronRight size={16} />
-              </button>
-              <div className="absolute bottom-2 right-2 bg-black/50 rounded-full px-2 py-0.5 text-white text-xs">
-                {currentSlide + 1}/{totalMedia}
-              </div>
-            </>
-          )}
+      {/* Carrusel de media */}
+      <div className="relative">
+        <img
+          src={currentMedia.url}
+          alt="shared content"
+          className="w-full max-h-96 object-contain cursor-pointer"
+          onClick={() =>
+            onImageClick({
+              url: currentMedia.url,
+              index: sharedCurrentSlide,
+              mediaArray: sharedPost.originalMedia,
+              postId: sharedPost.originalPostId,
+            })
+          }
+        />
+
+        {/* Indicadores de slide */}
+        <div className="absolute top-2 left-0 right-0 flex justify-center gap-1 z-10">
+          {sharedPost.originalMedia.map((_, idx) => (
+            <div
+              key={idx}
+              className={`h-1 rounded-full transition-all duration-300 ${
+                idx === sharedCurrentSlide ? "bg-white w-4" : "bg-white/50 w-2"
+              }`}
+            />
+          ))}
         </div>
-      )}
+
+        {/* Botones de navegación */}
+        <button
+          onClick={prevSlide}
+          className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 rounded-full p-2 text-white hover:bg-black/70 transition"
+        >
+          <FaChevronLeft size={20} />
+        </button>
+        <button
+          onClick={nextSlide}
+          className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 rounded-full p-2 text-white hover:bg-black/70 transition"
+        >
+          <FaChevronRight size={20} />
+        </button>
+
+        {/* Contador */}
+        <div className="absolute bottom-2 right-2 bg-black/50 rounded-full px-2 py-1 text-white text-xs">
+          {sharedCurrentSlide + 1}/{totalMedia}
+        </div>
+      </div>
     </div>
   );
 };
