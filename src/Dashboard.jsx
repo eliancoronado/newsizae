@@ -554,7 +554,13 @@ export default function Dashboard() {
   if (!user) return null;
 
   return (
-    <div className="h-[100dvh] bg-[#121212] flex relative">
+    <div
+      className="bg-[#121212] flex relative overflow-hidden"
+      style={{
+        height: "100vh",
+        height: "100dvh",
+      }}
+    >
       {notification && (
         <NotificationToast
           notification={notification}

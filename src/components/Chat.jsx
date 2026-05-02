@@ -29,7 +29,7 @@ export default function Chat({ currentUser, setActiveTab }) {
   return (
     <div className="h-full bg-[#18191A]">
       {/* Desktop: vista dividida */}
-      <div className="hidden md:flex h-full rounded-xl overflow-hidden shadow-xl">
+      <div className="hidden md:flex h-full min-h-0 rounded-xl overflow-hidden shadow-xl">
         <div className="w-1/3 border-r border-[#3E4042] bg-[#242526]">
           <ChatList currentUser={currentUser} onSelectChat={handleSelectChat} />
         </div>
@@ -47,7 +47,7 @@ export default function Chat({ currentUser, setActiveTab }) {
       </div>
 
       {/* Mobile: renderizado condicional simple */}
-      <div className="md:hidden h-full">
+      <div className="md:hidden h-full min-h-0 overflow-hidden">
         {!selectedFriend ? (
           <ChatList
             currentUser={currentUser}

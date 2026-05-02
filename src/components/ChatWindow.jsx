@@ -42,32 +42,10 @@ export default function ChatWindow({
   const [isSending, setIsSending] = useState(false);
   const [showStickerPicker, setShowStickerPicker] = useState(false);
   const [showImagePicker, setShowImagePicker] = useState(false);
-  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
   const { status, statusText } = usePresence(friendId);
   const [showCallPanel, setShowCallPanel] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
-
-  // Detectar teclado para ajustar padding del contenedor de mensajes
-  useEffect(() => {
-    const handleResize = () => {
-      const visualViewport = window.visualViewport;
-      if (visualViewport) {
-        const windowHeight = window.innerHeight;
-        const viewportHeight = visualViewport.height;
-        const diff = windowHeight - viewportHeight;
-        setIsKeyboardOpen(diff > 150);
-      }
-    };
-
-    window.visualViewport?.addEventListener("resize", handleResize);
-    window.addEventListener("resize", handleResize);
-
-    return () => {
-      window.visualViewport?.removeEventListener("resize", handleResize);
-      window.removeEventListener("resize", handleResize);
-    };
-  }, []);
 
   // Scroll al final cuando hay nuevos mensajes
   useEffect(() => {
@@ -392,7 +370,7 @@ export default function ChatWindow({
   }
 
   return (
-    <div className="h-full flex flex-col bg-[#18191A] relative">
+    <div className="flex flex-col h-full min-h-0 bg-[#18191A] relative overflow-hidden">
       {/* Header - fijo arriba */}
       <div className="flex-shrink-0 flex items-center gap-3 p-3 border-b border-[#3E4042] bg-[#242526] z-10">
         {isMobile && (
@@ -443,7 +421,15 @@ export default function ChatWindow({
       {/* Mensajes - scrollable, no se empuja */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-hide"
+        className="
+    flex-1
+    min-h-0
+    overflow-y-auto
+    overflow-x-hidden
+    p-4
+    space-y-3
+    scrollbar-hide
+  "
       >
         {messages.length === 0 ? (
           <div className="text-center py-12">
@@ -547,7 +533,23 @@ export default function ChatWindow({
               handleTyping();
             }}
             placeholder="Escribe un mensaje..."
-            className="flex-1 bg-[#3A3B3C] text-[#E4E6EB] px-4 py-2 rounded-full outline-none focus:ring-2 focus:ring-[#2e9b4f] transition text-sm resize-none"
+            className="
+    flex-1
+    min-h-[40px]
+    max-h-[100px]
+    bg-[#3A3B3C]
+    text-[#E4E6EB]
+    px-4
+    py-2
+    rounded-3xl
+    outline-none
+    focus:ring-2
+    focus:ring-[#2e9b4f]
+    transition
+    text-sm
+    resize-none
+    overflow-y-auto
+  "
             rows={1}
             style={{ maxHeight: "100px", overflowY: "auto" }}
           />
