@@ -52,26 +52,31 @@ export default function ChatWindow({
   const [showCallPanel, setShowCallPanel] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
 
-  // Manejo del teclado
+  const [containerHeight, setContainerHeight] = useState("100%");
+
+  // Agrega este useEffect para manejar el teclado correctamente
   useEffect(() => {
     const handleResize = () => {
-      const visualViewport = window.visualViewport;
-      if (visualViewport) {
-        const windowHeight = window.innerHeight;
-        const viewportHeight = visualViewport.height;
-        const diff = windowHeight - viewportHeight;
-        if (diff > 150) {
-          setIsKeyboardOpen(true);
-          setKeyboardHeight(diff);
+      // Calcular altura disponible
+      const windowHeight = window.innerHeight;
+      const chatContainer = document.querySelector(".chat-container");
+
+      if (chatContainer) {
+        // Si el teclado está abierto, ajustar altura
+        const visualViewport = window.visualViewport;
+        if (visualViewport && visualViewport.height < windowHeight) {
+          // Teclado abierto: usar la altura del viewport
+          setContainerHeight(`${visualViewport.height}px`);
         } else {
-          setIsKeyboardOpen(false);
-          setKeyboardHeight(0);
+          // Teclado cerrado: altura normal
+          setContainerHeight("100%");
         }
       }
     };
 
     window.visualViewport?.addEventListener("resize", handleResize);
     window.addEventListener("resize", handleResize);
+    handleResize(); // Llamar inicialmente
 
     return () => {
       window.visualViewport?.removeEventListener("resize", handleResize);
@@ -436,7 +441,10 @@ export default function ChatWindow({
   }
 
   return (
-    <div className="h-full flex flex-col bg-[#18191A]">
+    <div
+      className="h-full flex flex-col bg-[#18191A]"
+      style={{ height: containerHeight }}
+    >
       {/* Header */}
       <div className="flex-shrink-0 flex items-center gap-3 p-3 border-b border-[#3E4042] bg-[#242526]">
         {isMobile && (
@@ -572,15 +580,9 @@ export default function ChatWindow({
       </div>
 
       {/* Input con botones de imagen y sticker */}
-      <div
-        className="flex-shrink-0 p-3 border-t border-[#3E4042] bg-[#242526] relative"
-        style={{
-          transform: `translateY(${isKeyboardOpen ? -keyboardHeight : 0}px)`,
-          transition: "transform 0.3s ease-out",
-        }}
-      >
+      {/* Input - SIN transform, queda naturalmente arriba del teclado */}
+      <div className="flex-shrink-0 p-3 border-t border-[#3E4042] bg-[#242526]">
         <form autoComplete="off" onSubmit={sendMessage} className="flex gap-2">
-          {/* Botón de stickers */}
           <button
             type="button"
             onClick={() => setShowStickerPicker(!showStickerPicker)}
@@ -589,7 +591,6 @@ export default function ChatWindow({
             <FaSmile className="text-xl" />
           </button>
 
-          {/* Botón de imágenes */}
           <button
             type="button"
             onClick={() => setShowImagePicker(!showImagePicker)}
