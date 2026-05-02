@@ -5,15 +5,27 @@
 
 @custom-variant dark (&:is(.dark *));
 
-html,
-body,
-#root {
-  height: 100%;
-  width: 100%;
-  min-height: 100%;
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+/* Agrega esto a tu CSS global para mejorar el comportamiento del teclado */
+body {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
 }
 
+/* Para el área de scroll del chat */
+.chat-messages {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch; /* Scroll suave en iOS */
+}
+
+/* Asegurar que el textarea se comporte bien en iOS */
+textarea {
+  -webkit-appearance: none;
+  appearance: none;
+}
 /* Contenedor del chat debe ocupar toda la altura disponible */
 .chat-container {
   position: relative;
