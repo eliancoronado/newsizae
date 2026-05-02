@@ -2,9 +2,10 @@
 import React, { useEffect, useState } from "react";
 import { FcGoogle } from "react-icons/fc";
 import { auth, provider, db } from "../firebase";
-import { signInWithPopup } from "firebase/auth";
+import { signInWithPopup, signInWithCustomToken } from "firebase/auth";
 import { ref, set, get } from "firebase/database";
 import { useNavigate } from "react-router-dom";
+import { generateCustomToken } from "../utils/generateCustomToken";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -124,7 +125,23 @@ const Login = () => {
         throw new Error("El usuario debe tener un campo 'uid'");
       }
 
-      // 🔥 IMPORTANTE: Guardar en localStorage ANTES de navegar
+      // 🔥 Generar un Custom Token de Firebase usando la clave privada
+      const customToken = await generateCustomToken(userData.uid);
+
+      if (!customToken) {
+        throw new Error("No se pudo generar el token personalizado");
+      }
+
+      // Iniciar sesión con el Custom Token
+      try {
+        await signInWithCustomToken(auth, customToken);
+        console.log("✅ Sesión Firebase creada con Custom Token");
+      } catch (authError) {
+        console.error("Error al iniciar sesión con Custom Token:", authError);
+        throw new Error("No se pudo autenticar con Firebase");
+      }
+
+      // Guardar en localStorage
       localStorage.setItem(
         "user",
         JSON.stringify({
@@ -133,11 +150,11 @@ const Login = () => {
           email: userData.email || "",
           picture:
             userData.photo || userData.photoURL || userData.picture || "",
-          _apiLogin: true, // Marcar que es login por API
         }),
       );
-      localStorage.setItem("token", token);
-      localStorage.setItem("apiLogin", "true"); // Flag para saber que es login por API
+      localStorage.setItem("token", customToken);
+      localStorage.setItem("apiLogin", "true");
+      localStorage.setItem("apiUid", userData.uid);
 
       // Verificar/crear usuario en Firebase Database
       try {
@@ -166,7 +183,6 @@ const Login = () => {
         console.warn("Error al verificar/crear usuario en DB:", dbError);
       }
 
-      // 🔥 Redirigir directamente sin esperar Firebase Auth
       navigate("/dashboard");
     } catch (error) {
       console.error("Error con API Key:", error);
