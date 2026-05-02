@@ -1,4 +1,4 @@
-// components/ChatWindow.jsx - Versión MEJORADA
+// components/ChatWindow.jsx - Versión CORREGIDA
 import { useEffect, useState, useRef } from "react";
 import { ref, push, onValue, off, update, set, get } from "firebase/database";
 import { db } from "../firebase";
@@ -21,8 +21,6 @@ import ImagePicker from "./ImagePicker";
 import { uploadToS3 } from "../utils/uploadToS3SDK";
 import ImagePreviewModal from "./ImagePreviewModal";
 
-const BOTTOM_BAR_HEIGHT = 0;
-
 export default function ChatWindow({
   currentUser,
   friendId,
@@ -36,79 +34,47 @@ export default function ChatWindow({
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const chatId = [currentUser.uid, friendId].sort().join("_");
   const [friendIsTyping, setFriendIsTyping] = useState(false);
   const inputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const [isSending, setIsSending] = useState(false);
-
-  // Nuevos estados
   const [showStickerPicker, setShowStickerPicker] = useState(false);
   const [showImagePicker, setShowImagePicker] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
   const { status, statusText } = usePresence(friendId);
   const [showCallPanel, setShowCallPanel] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
 
-  const [containerHeight, setContainerHeight] = useState("100%");
-
-  /*
-  // Agrega este useEffect para manejar el teclado correctamente
+  // Detectar teclado para ajustar padding del contenedor de mensajes
   useEffect(() => {
     const handleResize = () => {
-      // Calcular altura disponible
-      const windowHeight = window.innerHeight;
-      const chatContainer = document.querySelector(".chat-container");
-
-      if (chatContainer) {
-        // Si el teclado está abierto, ajustar altura
-        const visualViewport = window.visualViewport;
-        if (visualViewport && visualViewport.height < windowHeight) {
-          // Teclado abierto: usar la altura del viewport
-          setContainerHeight(`${visualViewport.height}px`);
-        } else {
-          // Teclado cerrado: altura normal
-          setContainerHeight("100%");
-        }
+      const visualViewport = window.visualViewport;
+      if (visualViewport) {
+        const windowHeight = window.innerHeight;
+        const viewportHeight = visualViewport.height;
+        const diff = windowHeight - viewportHeight;
+        setIsKeyboardOpen(diff > 150);
       }
     };
 
     window.visualViewport?.addEventListener("resize", handleResize);
     window.addEventListener("resize", handleResize);
-    handleResize(); // Llamar inicialmente
 
     return () => {
       window.visualViewport?.removeEventListener("resize", handleResize);
       window.removeEventListener("resize", handleResize);
     };
   }, []);
-  */
 
-  // Scroll al hacer foco
+  // Scroll al final cuando hay nuevos mensajes
   useEffect(() => {
-    const handleFocus = () => {
-      setTimeout(() => {
-        if (inputRef.current) {
-          inputRef.current.scrollIntoView({
-            behavior: "smooth",
-            block: "center",
-          });
-        }
-      }, 200);
-    };
-
-    if (inputRef.current) {
-      inputRef.current.addEventListener("focus", handleFocus);
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "auto" });
     }
-
-    return () => {
-      if (inputRef.current) {
-        inputRef.current.removeEventListener("focus", handleFocus);
-      }
-    };
-  }, []);
+  }, [messages]);
 
   const {
     iniciarLlamada,
@@ -137,7 +103,6 @@ export default function ChatWindow({
       alert("Error: No se pudo identificar al usuario");
       return;
     }
-    console.log("📞 Iniciando llamada desde:", currentUser.uid, "a:", friendId);
     iniciarLlamada(currentUser.name);
     setShowCallPanel(false);
   };
@@ -154,15 +119,6 @@ export default function ChatWindow({
       set(typingRef, false);
     }, 2000);
   };
-
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      if (messagesEndRef.current) {
-        messagesEndRef.current.scrollIntoView({ behavior: "auto" });
-      }
-    }, 50);
-    return () => clearTimeout(timeout);
-  }, [messages, keyboardHeight]);
 
   useEffect(() => {
     if (!friendId) return;
@@ -212,7 +168,6 @@ export default function ChatWindow({
     return () => unsubscribe();
   }, [chatId, currentUser.uid, friendId]);
 
-  // Enviar mensaje de texto
   const sendMessage = async (e) => {
     e.preventDefault();
     const messageText = newMessage.trim();
@@ -277,8 +232,6 @@ export default function ChatWindow({
         messageToSend,
         currentUser.picture,
       );
-
-      inputRef.current?.focus();
     } catch (error) {
       console.error("Error sending message:", error);
       setNewMessage(messageToSend);
@@ -288,7 +241,6 @@ export default function ChatWindow({
     }
   };
 
-  // Enviar imagen
   const sendImageMessage = async (imageFile) => {
     setIsSending(true);
     try {
@@ -307,7 +259,6 @@ export default function ChatWindow({
 
       const messagesRef = ref(db, `chats/${chatId}/messages`);
       await push(messagesRef, message);
-
       await update(ref(db, `chats/${chatId}`), {
         lastMessage: {
           text: "📷 Imagen",
@@ -354,7 +305,6 @@ export default function ChatWindow({
     }
   };
 
-  // Enviar sticker
   const sendStickerMessage = async (sticker) => {
     setIsSending(true);
     try {
@@ -371,7 +321,6 @@ export default function ChatWindow({
 
       const messagesRef = ref(db, `chats/${chatId}/messages`);
       await push(messagesRef, message);
-
       await update(ref(db, `chats/${chatId}`), {
         lastMessage: {
           text: sticker.emoji || sticker.text,
@@ -443,12 +392,9 @@ export default function ChatWindow({
   }
 
   return (
-    <div
-      className="h-full flex flex-col bg-[#18191A]"
-      style={{ height: containerHeight }}
-    >
-      {/* Header */}
-      <div className="flex-shrink-0 flex items-center gap-3 p-3 border-b border-[#3E4042] bg-[#242526]">
+    <div className="h-full flex flex-col bg-[#18191A] relative">
+      {/* Header - fijo arriba */}
+      <div className="flex-shrink-0 flex items-center gap-3 p-3 border-b border-[#3E4042] bg-[#242526] z-10">
         {isMobile && (
           <button
             onClick={onBack}
@@ -494,13 +440,10 @@ export default function ChatWindow({
         </button>
       </div>
 
-      {/* Mensajes con mejor scroll y márgenes */}
+      {/* Mensajes - scrollable, no se empuja */}
       <div
+        ref={messagesContainerRef}
         className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-hide"
-        style={{
-          paddingBottom: isKeyboardOpen ? "80px" : "20px",
-          transition: "padding-bottom 0.3s ease-out",
-        }}
       >
         {messages.length === 0 ? (
           <div className="text-center py-12">
@@ -525,8 +468,6 @@ export default function ChatWindow({
               <div
                 className={`max-w-[70%] ${msg.senderId === currentUser.uid ? "order-2" : "order-1"}`}
               >
-                {/* Mensaje con imagen */}
-                {/* Mensaje con imagen */}
                 {msg.type === "image" && msg.imageUrl && (
                   <div className="mb-1">
                     <img
@@ -537,7 +478,6 @@ export default function ChatWindow({
                     />
                   </div>
                 )}
-                {/* Mensaje sticker */}
                 {msg.type === "sticker" && msg.stickerUrl && (
                   <div className="mb-1">
                     <img
@@ -550,7 +490,6 @@ export default function ChatWindow({
                 {msg.type === "sticker" && !msg.stickerUrl && msg.text && (
                   <div className="text-6xl">{msg.text}</div>
                 )}
-                {/* Mensaje de texto normal */}
                 {(!msg.type || msg.type === "text") &&
                   msg.text &&
                   !msg.imageUrl &&
@@ -581,8 +520,7 @@ export default function ChatWindow({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input con botones de imagen y sticker */}
-      {/* Input - SIN transform, queda naturalmente arriba del teclado */}
+      {/* Input - fijo abajo, se mantiene visible */}
       <div className="flex-shrink-0 p-3 border-t border-[#3E4042] bg-[#242526]">
         <form autoComplete="off" onSubmit={sendMessage} className="flex gap-2">
           <button
@@ -623,7 +561,7 @@ export default function ChatWindow({
         </form>
       </div>
 
-      {/* Picker de stickers */}
+      {/* Pickers y modales */}
       {showStickerPicker && (
         <StickerPicker
           currentUser={currentUser}
@@ -632,7 +570,6 @@ export default function ChatWindow({
         />
       )}
 
-      {/* Picker de imágenes */}
       {showImagePicker && (
         <ImagePicker
           onSelectImage={sendImageMessage}
@@ -640,13 +577,13 @@ export default function ChatWindow({
         />
       )}
 
-      {/* Modales de llamada */}
       <LlamadaEntrante
         llamadaEntrante={llamadaEntrante}
         onAceptar={aceptarLlamada}
         onRechazar={colgarLlamada}
         nombreCreador={llamadaEntrante?.creadorNombre || ""}
       />
+
       {showCallPanel && !enLlamada && !llamando && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
           <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-80">
@@ -687,7 +624,6 @@ export default function ChatWindow({
         />
       )}
 
-      {/* Modal para expandir imagen */}
       {previewImage && (
         <ImagePreviewModal
           imageUrl={previewImage}
