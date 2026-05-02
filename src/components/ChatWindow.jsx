@@ -54,6 +54,7 @@ export default function ChatWindow({
 
   const [containerHeight, setContainerHeight] = useState("100%");
 
+  /*
   // Agrega este useEffect para manejar el teclado correctamente
   useEffect(() => {
     const handleResize = () => {
@@ -83,6 +84,7 @@ export default function ChatWindow({
       window.removeEventListener("resize", handleResize);
     };
   }, []);
+  */
 
   // Scroll al hacer foco
   useEffect(() => {
