@@ -555,7 +555,7 @@ export default function Dashboard() {
 
   return (
     <div
-      className="bg-[#121212] flex relative overflow-hidden"
+      className="bg-[#121212] flex relative"
       style={{
         height: "100vh",
         height: "100dvh",
