@@ -1,32 +1,57 @@
-// hooks/useKeyboardHeight.js
-import { useEffect, useState } from "react";
+// hooks/useKeyboardHandler.js
+import { useEffect, useState, useRef } from "react";
 
-export const useKeyboardHeight = () => {
+export const useKeyboardHandler = () => {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const inputRef = useRef(null);
+  const containerRef = useRef(null);
 
   useEffect(() => {
+    const handleFocus = () => {
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        }
+      }, 100);
+    };
+
     const handleResize = () => {
-      // En móviles, cuando el teclado aparece, el viewport cambia
+      // Detectar teclado en móvil
       const visualViewport = window.visualViewport;
       if (visualViewport) {
         const windowHeight = window.innerHeight;
         const viewportHeight = visualViewport.height;
         const diff = windowHeight - viewportHeight;
-        setKeyboardHeight(diff > 0 ? diff : 0);
+
+        if (diff > 150) {
+          setIsKeyboardOpen(true);
+          setKeyboardHeight(diff);
+        } else {
+          setIsKeyboardOpen(false);
+          setKeyboardHeight(0);
+        }
       }
     };
 
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", handleResize);
-      handleResize(); // Ejecutar al inicio
+    window.visualViewport?.addEventListener("resize", handleResize);
+    window.addEventListener("resize", handleResize);
+
+    if (inputRef.current) {
+      inputRef.current.addEventListener("focus", handleFocus);
     }
 
     return () => {
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener("resize", handleResize);
+      window.visualViewport?.removeEventListener("resize", handleResize);
+      window.removeEventListener("resize", handleResize);
+      if (inputRef.current) {
+        inputRef.current.removeEventListener("focus", handleFocus);
       }
     };
   }, []);
 
-  return keyboardHeight;
+  return { keyboardHeight, isKeyboardOpen, inputRef, containerRef };
 };

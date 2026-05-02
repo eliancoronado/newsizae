@@ -1,16 +1,25 @@
-// components/ChatWindow.jsx
+// components/ChatWindow.jsx - Versión MEJORADA
 import { useEffect, useState, useRef } from "react";
 import { ref, push, onValue, off, update, set, get } from "firebase/database";
 import { db } from "../firebase";
 import { usePresence } from "../hooks/usePresence";
-import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
 import { Link } from "react-router-dom";
-import { FaArrowLeft, FaPhone } from "react-icons/fa";
+import {
+  FaArrowLeft,
+  FaPhone,
+  FaImage,
+  FaSmile,
+  FaPaperPlane,
+} from "react-icons/fa";
 import { getAuth } from "firebase/auth";
 import { sendPushNotification } from "../utils/notifications";
 import LlamadaUI from "./LlamadaUI";
 import { useWebRTC } from "../hooks/useWebRTC";
 import LlamadaEntrante from "./LlamadaEntrante";
+import StickerPicker from "./StickerPicker";
+import ImagePicker from "./ImagePicker";
+import { uploadToS3 } from "../utils/uploadToS3SDK";
+import ImagePreviewModal from "./ImagePreviewModal";
 
 const BOTTOM_BAR_HEIGHT = 0;
 
@@ -33,11 +42,67 @@ export default function ChatWindow({
   const typingTimeoutRef = useRef(null);
   const [isSending, setIsSending] = useState(false);
 
-  const keyboardHeight = useKeyboardHeight();
+  // Nuevos estados
+  const [showStickerPicker, setShowStickerPicker] = useState(false);
+  const [showImagePicker, setShowImagePicker] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+
   const { status, statusText } = usePresence(friendId);
   const [showCallPanel, setShowCallPanel] = useState(false);
+  const [previewImage, setPreviewImage] = useState(null);
 
-  // 🔥 NUEVO HOOK - BASADO EN LA GUÍA FUNCIONAL
+  // Manejo del teclado
+  useEffect(() => {
+    const handleResize = () => {
+      const visualViewport = window.visualViewport;
+      if (visualViewport) {
+        const windowHeight = window.innerHeight;
+        const viewportHeight = visualViewport.height;
+        const diff = windowHeight - viewportHeight;
+        if (diff > 150) {
+          setIsKeyboardOpen(true);
+          setKeyboardHeight(diff);
+        } else {
+          setIsKeyboardOpen(false);
+          setKeyboardHeight(0);
+        }
+      }
+    };
+
+    window.visualViewport?.addEventListener("resize", handleResize);
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.visualViewport?.removeEventListener("resize", handleResize);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
+  // Scroll al hacer foco
+  useEffect(() => {
+    const handleFocus = () => {
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        }
+      }, 200);
+    };
+
+    if (inputRef.current) {
+      inputRef.current.addEventListener("focus", handleFocus);
+    }
+
+    return () => {
+      if (inputRef.current) {
+        inputRef.current.removeEventListener("focus", handleFocus);
+      }
+    };
+  }, []);
+
   const {
     iniciarLlamada,
     aceptarLlamada,
@@ -82,30 +147,6 @@ export default function ChatWindow({
       set(typingRef, false);
     }, 2000);
   };
-
-  // En ChatWindow.jsx, dentro del componente, agrega:
-  useEffect(() => {
-    console.log("📺 remoteStream actualizado:", remoteStream);
-    if (remoteStream) {
-      console.log(
-        "🎥 Tracks en remoteStream:",
-        remoteStream.getTracks().length,
-      );
-      remoteStream.getTracks().forEach((track) => {
-        console.log(
-          `🎬 Track: kind=${track.kind}, enabled=${track.enabled}, muted=${track.muted}`,
-        );
-        // 🔥 Forzar enabled en los tracks si es necesario
-        if (!track.enabled) {
-          track.enabled = true;
-        }
-      });
-    }
-  }, [remoteStream]);
-
-  useEffect(() => {
-    console.log("🎥 localStream actualizado:", localStream);
-  }, [localStream]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -164,6 +205,7 @@ export default function ChatWindow({
     return () => unsubscribe();
   }, [chatId, currentUser.uid, friendId]);
 
+  // Enviar mensaje de texto
   const sendMessage = async (e) => {
     e.preventDefault();
     const messageText = newMessage.trim();
@@ -239,6 +281,136 @@ export default function ChatWindow({
     }
   };
 
+  // Enviar imagen
+  const sendImageMessage = async (imageFile) => {
+    setIsSending(true);
+    try {
+      const imageUrl = await uploadToS3(imageFile);
+
+      const message = {
+        text: "📷 Imagen",
+        imageUrl: imageUrl,
+        type: "image",
+        senderId: currentUser.uid,
+        senderName: currentUser.name,
+        senderPhoto: currentUser.picture,
+        timestamp: Date.now(),
+        read: false,
+      };
+
+      const messagesRef = ref(db, `chats/${chatId}/messages`);
+      await push(messagesRef, message);
+
+      await update(ref(db, `chats/${chatId}`), {
+        lastMessage: {
+          text: "📷 Imagen",
+          timestamp: Date.now(),
+          senderId: currentUser.uid,
+        },
+      });
+
+      const friendChatRef = ref(db, `userChats/${friendId}/${currentUser.uid}`);
+      const snapshot = await get(friendChatRef);
+      const currentUnread = snapshot.val()?.unreadCount || 0;
+      const newUnread = currentUnread + 1;
+
+      await update(ref(db, `userChats/${friendId}/${currentUser.uid}`), {
+        lastMessage: "📷 Imagen",
+        lastMessageTime: Date.now(),
+        userName: currentUser.name,
+        userPhoto: currentUser.picture,
+        chatId: chatId,
+        unreadCount: newUnread,
+      });
+
+      await update(ref(db, `userChats/${currentUser.uid}/${friendId}`), {
+        lastMessage: "📷 Imagen",
+        lastMessageTime: Date.now(),
+        userName: friendName,
+        userPhoto: friendPhoto,
+        chatId: chatId,
+        unreadCount: 0,
+      });
+
+      await sendPushNotification(
+        friendId,
+        currentUser.name,
+        "📷 Imagen",
+        currentUser.picture,
+      );
+    } catch (error) {
+      console.error("Error sending image:", error);
+      alert("Error al enviar imagen");
+    } finally {
+      setIsSending(false);
+      setShowImagePicker(false);
+    }
+  };
+
+  // Enviar sticker
+  const sendStickerMessage = async (sticker) => {
+    setIsSending(true);
+    try {
+      const message = {
+        text: sticker.emoji || sticker.text,
+        stickerUrl: sticker.image || null,
+        type: "sticker",
+        senderId: currentUser.uid,
+        senderName: currentUser.name,
+        senderPhoto: currentUser.picture,
+        timestamp: Date.now(),
+        read: false,
+      };
+
+      const messagesRef = ref(db, `chats/${chatId}/messages`);
+      await push(messagesRef, message);
+
+      await update(ref(db, `chats/${chatId}`), {
+        lastMessage: {
+          text: sticker.emoji || sticker.text,
+          timestamp: Date.now(),
+          senderId: currentUser.uid,
+        },
+      });
+
+      const friendChatRef = ref(db, `userChats/${friendId}/${currentUser.uid}`);
+      const snapshot = await get(friendChatRef);
+      const currentUnread = snapshot.val()?.unreadCount || 0;
+      const newUnread = currentUnread + 1;
+
+      await update(ref(db, `userChats/${friendId}/${currentUser.uid}`), {
+        lastMessage: sticker.emoji || sticker.text,
+        lastMessageTime: Date.now(),
+        userName: currentUser.name,
+        userPhoto: currentUser.picture,
+        chatId: chatId,
+        unreadCount: newUnread,
+      });
+
+      await update(ref(db, `userChats/${currentUser.uid}/${friendId}`), {
+        lastMessage: sticker.emoji || sticker.text,
+        lastMessageTime: Date.now(),
+        userName: friendName,
+        userPhoto: friendPhoto,
+        chatId: chatId,
+        unreadCount: 0,
+      });
+
+      await sendPushNotification(
+        friendId,
+        currentUser.name,
+        sticker.emoji || sticker.text,
+        currentUser.picture,
+      );
+    } catch (error) {
+      console.error("Error sending sticker:", error);
+      alert("Error al enviar sticker");
+    } finally {
+      setIsSending(false);
+      setShowStickerPicker(false);
+    }
+  };
+
   if (!friendId) {
     return (
       <div className="flex items-center justify-center h-full bg-[#18191A]">
@@ -302,31 +474,22 @@ export default function ChatWindow({
             </p>
           </div>
         </Link>
-
-        {(enLlamada || llamando) && (
-          <div className="absolute top-0 right-0 mt-1 mr-1">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-ping"></div>
-          </div>
-        )}
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleIniciarLlamada}
-            className="p-2 hover:bg-[#3A3B3C] rounded-full transition-colors"
-            disabled={enLlamada}
-          >
-            <FaPhone
-              className={`text-lg ${enLlamada ? "text-green-500" : "text-[#2e9b4f]"}`}
-            />
-          </button>
-        </div>
+        <button
+          onClick={handleIniciarLlamada}
+          className="p-2 hover:bg-[#3A3B3C] rounded-full transition-colors"
+        >
+          <FaPhone
+            className={`text-lg ${enLlamada ? "text-green-500" : "text-[#2e9b4f]"}`}
+          />
+        </button>
       </div>
 
-      {/* Mensajes */}
+      {/* Mensajes con mejor scroll y márgenes */}
       <div
         className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-hide"
         style={{
-          maxHeight: `calc(100vh - ${isMobile ? 140 + keyboardHeight : 140}px)`,
+          paddingBottom: isKeyboardOpen ? "80px" : "20px",
+          transition: "padding-bottom 0.3s ease-out",
         }}
       >
         {messages.length === 0 ? (
@@ -352,11 +515,42 @@ export default function ChatWindow({
               <div
                 className={`max-w-[70%] ${msg.senderId === currentUser.uid ? "order-2" : "order-1"}`}
               >
-                <div
-                  className={`rounded-2xl px-4 py-2 ${msg.senderId === currentUser.uid ? "bg-[#2e9b4f] text-white" : "bg-[#3A3B3C] text-[#E4E6EB]"}`}
-                >
-                  <p className="break-words text-sm">{msg.text}</p>
-                </div>
+                {/* Mensaje con imagen */}
+                {/* Mensaje con imagen */}
+                {msg.type === "image" && msg.imageUrl && (
+                  <div className="mb-1">
+                    <img
+                      src={msg.imageUrl}
+                      alt="imagen"
+                      className="rounded-2xl max-w-full max-h-60 object-cover cursor-pointer hover:opacity-90 transition"
+                      onClick={() => setPreviewImage(msg.imageUrl)}
+                    />
+                  </div>
+                )}
+                {/* Mensaje sticker */}
+                {msg.type === "sticker" && msg.stickerUrl && (
+                  <div className="mb-1">
+                    <img
+                      src={msg.stickerUrl}
+                      alt="sticker"
+                      className="w-24 h-24 object-contain"
+                    />
+                  </div>
+                )}
+                {msg.type === "sticker" && !msg.stickerUrl && msg.text && (
+                  <div className="text-6xl">{msg.text}</div>
+                )}
+                {/* Mensaje de texto normal */}
+                {(!msg.type || msg.type === "text") &&
+                  msg.text &&
+                  !msg.imageUrl &&
+                  !msg.stickerUrl && (
+                    <div
+                      className={`rounded-2xl px-4 py-2 ${msg.senderId === currentUser.uid ? "bg-[#2e9b4f] text-white" : "bg-[#3A3B3C] text-[#E4E6EB]"}`}
+                    >
+                      <p className="break-words text-sm">{msg.text}</p>
+                    </div>
+                  )}
                 <div
                   className={`text-xs text-gray-500 mt-1 flex items-center gap-1 ${msg.senderId === currentUser.uid ? "justify-end" : "justify-start"}`}
                 >
@@ -377,41 +571,71 @@ export default function ChatWindow({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
+      {/* Input con botones de imagen y sticker */}
       <div
-        className="flex-shrink-0 p-3 border-t border-[#3E4042] bg-[#242526]"
+        className="flex-shrink-0 p-3 border-t border-[#3E4042] bg-[#242526] relative"
         style={{
-          marginBottom: isMobile ? keyboardHeight : 0,
-          transition: "margin-bottom 0.3s ease-out",
+          transform: `translateY(${isKeyboardOpen ? -keyboardHeight : 0}px)`,
+          transition: "transform 0.3s ease-out",
         }}
       >
         <form autoComplete="off" onSubmit={sendMessage} className="flex gap-2">
+          {/* Botón de stickers */}
+          <button
+            type="button"
+            onClick={() => setShowStickerPicker(!showStickerPicker)}
+            className="bg-[#3A3B3C] hover:bg-[#4A4B4C] text-yellow-400 p-2 rounded-full transition"
+          >
+            <FaSmile className="text-xl" />
+          </button>
+
+          {/* Botón de imágenes */}
+          <button
+            type="button"
+            onClick={() => setShowImagePicker(!showImagePicker)}
+            className="bg-[#3A3B3C] hover:bg-[#4A4B4C] text-[#2e9b4f] p-2 rounded-full transition"
+          >
+            <FaImage className="text-xl" />
+          </button>
+
           <textarea
-            name="chat"
             ref={inputRef}
-            type="text"
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck="false"
-            inputMode="text"
             value={newMessage}
             onChange={(e) => {
               setNewMessage(e.target.value);
               handleTyping();
             }}
             placeholder="Escribe un mensaje..."
-            className="flex-1 bg-[#3A3B3C] text-[#E4E6EB] px-4 py-2 rounded-full outline-none focus:ring-2 focus:ring-[#2e9b4f] transition text-sm"
+            className="flex-1 bg-[#3A3B3C] text-[#E4E6EB] px-4 py-2 rounded-full outline-none focus:ring-2 focus:ring-[#2e9b4f] transition text-sm resize-none"
+            rows={1}
+            style={{ maxHeight: "100px", overflowY: "auto" }}
           />
           <button
             type="submit"
-            disabled={!newMessage.trim()}
+            disabled={!newMessage.trim() || isSending}
             className="bg-[#2e9b4f] hover:bg-[#268e46] text-white px-5 py-2 rounded-full font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed text-sm"
           >
-            Enviar
+            <FaPaperPlane />
           </button>
         </form>
       </div>
+
+      {/* Picker de stickers */}
+      {showStickerPicker && (
+        <StickerPicker
+          currentUser={currentUser}
+          onSelectSticker={sendStickerMessage}
+          onClose={() => setShowStickerPicker(false)}
+        />
+      )}
+
+      {/* Picker de imágenes */}
+      {showImagePicker && (
+        <ImagePicker
+          onSelectImage={sendImageMessage}
+          onClose={() => setShowImagePicker(false)}
+        />
+      )}
 
       {/* Modales de llamada */}
       <LlamadaEntrante
@@ -420,7 +644,6 @@ export default function ChatWindow({
         onRechazar={colgarLlamada}
         nombreCreador={llamadaEntrante?.creadorNombre || ""}
       />
-
       {showCallPanel && !enLlamada && !llamando && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
           <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-80">
@@ -445,7 +668,6 @@ export default function ChatWindow({
         </div>
       )}
 
-      {/* UI de llamada en curso */}
       {(llamando || enLlamada) && (
         <LlamadaUI
           enLlamada={enLlamada}
@@ -459,6 +681,14 @@ export default function ChatWindow({
           toggleVideo={toggleVideo}
           toggleAudio={toggleAudio}
           onClose={() => {}}
+        />
+      )}
+
+      {/* Modal para expandir imagen */}
+      {previewImage && (
+        <ImagePreviewModal
+          imageUrl={previewImage}
+          onClose={() => setPreviewImage(null)}
         />
       )}
     </div>

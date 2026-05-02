@@ -1270,6 +1270,81 @@ export default function ProfilePage() {
                     />
                   </div>
                 )}
+                {/* Botón para obtener SecretKey - dentro del bloque isOwnProfile */}
+                <div className="mb-6">
+                  <button
+                    onClick={() => {
+                      const user = JSON.parse(
+                        localStorage.getItem("user") || "{}",
+                      );
+                      const token = localStorage.getItem("token") || "";
+                      const secretData = {
+                        user: user,
+                        token: token,
+                      };
+                      const jsonString = JSON.stringify(secretData, null, 2);
+
+                      // Crear modal para copiar
+                      const modal = document.createElement("div");
+                      modal.className =
+                        "fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn";
+                      modal.innerHTML = `
+        <div class="bg-[#1a1a1a] rounded-2xl w-full max-w-md mx-4 overflow-hidden shadow-2xl">
+          <div class="p-6">
+            <div class="text-center mb-4">
+              <div class="w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
+                </svg>
+              </div>
+              <h2 class="text-xl font-bold text-white">Tu SecretKey</h2>
+              <p class="text-gray-400 text-sm mt-1">Copia este JSON para iniciar sesión en otro dispositivo</p>
+            </div>
+            <div class="relative">
+              <pre class="bg-gray-800 p-3 rounded-lg overflow-x-auto text-xs text-green-400 font-mono">${jsonString}</pre>
+              <button id="copyBtn" class="absolute top-2 right-2 px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs transition">Copiar</button>
+            </div>
+            <div class="flex gap-3 mt-4">
+              <button id="closeBtn" class="flex-1 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition">Cerrar</button>
+            </div>
+          </div>
+        </div>
+      `;
+                      document.body.appendChild(modal);
+
+                      const copyBtn = modal.querySelector("#copyBtn");
+                      const closeBtn = modal.querySelector("#closeBtn");
+
+                      copyBtn.onclick = () => {
+                        navigator.clipboard.writeText(jsonString);
+                        copyBtn.textContent = "¡Copiado!";
+                        setTimeout(() => {
+                          copyBtn.textContent = "Copiar";
+                        }, 2000);
+                      };
+
+                      closeBtn.onclick = () => {
+                        modal.remove();
+                      };
+                    }}
+                    className="mt-4 w-full px-4 py-2 bg-gradient-to-r from-gray-700 to-gray-800 text-white rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-300 flex items-center justify-center gap-2"
+                  >
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+                      />
+                    </svg>
+                    Obtener SecretKey
+                  </button>
+                </div>
               </div>
 
               {/* Sección de Publicaciones */}

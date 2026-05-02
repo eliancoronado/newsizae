@@ -11,6 +11,11 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [user, setUser] = useState(null);
+  // Agrega estos estados al inicio del componente, después de los otros useState
+  const [showApiModal, setShowApiModal] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [apiError, setApiError] = useState(null);
+  const [loadingApi, setLoadingApi] = useState(false);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -86,6 +91,94 @@ const Login = () => {
     }
   }
 
+  // Función para iniciar sesión con API Key
+  const loginWithApiKey = async () => {
+    setLoadingApi(true);
+    setApiError(null);
+
+    try {
+      // Parsear el input (espera formato: {"user": {...}, "token": "..."} o similar)
+      let parsedData;
+      try {
+        parsedData = JSON.parse(apiKeyInput);
+      } catch (e) {
+        throw new Error("Formato inválido. Debe ser un JSON válido");
+      }
+
+      // Validar estructura
+      let userData, token;
+
+      // Soporta diferentes formatos
+      if (parsedData.user && parsedData.token) {
+        userData = parsedData.user;
+        token = parsedData.token;
+      } else if (parsedData.uid && parsedData.email) {
+        // Si es solo el objeto usuario, asumimos que el token está en otro campo
+        userData = parsedData;
+        token = parsedData.token || parsedData.accessToken;
+      } else {
+        throw new Error(
+          "El JSON debe contener 'user' y 'token' o datos de usuario válidos",
+        );
+      }
+
+      // Validar que tenga los campos mínimos
+      if (!userData.uid) {
+        throw new Error("El usuario debe tener un campo 'uid'");
+      }
+
+      // Guardar en localStorage
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          uid: userData.uid,
+          name: userData.name || userData.displayName || "Usuario",
+          email: userData.email || "",
+          picture:
+            userData.photo || userData.photoURL || userData.picture || "",
+        }),
+      );
+      localStorage.setItem("token", token);
+
+      // Verificar/crear usuario en Firebase Database (opcional)
+      try {
+        const userRef = ref(db, `users/${userData.uid}`);
+        const snapshot = await get(userRef);
+
+        if (!snapshot.exists()) {
+          // Crear usuario si no existe
+          await set(userRef, {
+            uid: userData.uid,
+            email: userData.email || "",
+            name: userData.name || userData.displayName || "Usuario",
+            photo:
+              userData.photo || userData.photoURL || userData.picture || "",
+            bio: "Hola, estoy usando esta increíble app",
+            role: "bronze",
+            coverPhoto: null,
+            projects: [],
+            friends: {},
+            sentRequests: {},
+            receivedRequests: {},
+            createdAt: Date.now(),
+            lastSeen: Date.now(),
+          });
+        }
+      } catch (dbError) {
+        console.warn("Error al verificar/crear usuario en DB:", dbError);
+        // No bloqueamos el login si falla la DB
+      }
+
+      // Redirigir
+      navigate("/dashboard");
+    } catch (error) {
+      console.error("Error con API Key:", error);
+      setApiError(error.message);
+    } finally {
+      setLoadingApi(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 px-4">
       {/* Card elegante */}
@@ -128,11 +221,113 @@ const Login = () => {
           </span>
         </button>
 
+        {/* Botón de API Key */}
+        <button
+          onClick={() => setShowApiModal(true)}
+          className="w-full flex items-center justify-center gap-3 bg-gray-800 hover:bg-gray-700 text-white font-medium py-3 px-4 rounded-xl border border-gray-600 shadow-sm transition-all duration-200 hover:shadow-md active:scale-[0.98] mt-3"
+        >
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+            />
+          </svg>
+          <span>Entrar con API Key</span>
+        </button>
+
         {/* Línea decorativa */}
         <div className="mt-8 text-center text-xs text-gray-400">
           Al iniciar sesión aceptas nuestros términos y condiciones
         </div>
       </div>
+
+      {/* Modal para API Key */}
+      {showApiModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
+          <div className="bg-white rounded-2xl w-full max-w-md mx-4 overflow-hidden shadow-2xl">
+            <div className="p-6">
+              <div className="text-center mb-4">
+                <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                  <svg
+                    className="w-8 h-8 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+                    />
+                  </svg>
+                </div>
+                <h2 className="text-xl font-bold text-gray-800">
+                  Entrar con API Key
+                </h2>
+                <p className="text-gray-500 text-sm mt-1">
+                  Ingresa el JSON con tus credenciales
+                </p>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-gray-700 text-sm font-medium mb-2">
+                  Credenciales (JSON)
+                </label>
+                <textarea
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  placeholder='Ejemplo: {"user": {"uid": "123", "name": "Juan"}, "token": "abc123"}'
+                  className="w-full h-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Formato esperado: {'{ "user": {...}, "token": "..." }'}
+                </p>
+              </div>
+
+              {apiError && (
+                <div className="mb-4 p-2 bg-red-100 text-red-600 rounded-lg text-xs text-center">
+                  {apiError}
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowApiModal(false);
+                    setApiKeyInput("");
+                    setApiError(null);
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={loginWithApiKey}
+                  disabled={loadingApi || !apiKeyInput.trim()}
+                  className="flex-1 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg hover:shadow-lg transition disabled:opacity-50"
+                >
+                  {loadingApi ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Validando...
+                    </div>
+                  ) : (
+                    "Iniciar sesión"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
