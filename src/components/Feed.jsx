@@ -32,6 +32,7 @@ import {
   FaChevronLeft,
   FaChevronRight,
   FaVideo,
+  FaShare,
 } from "react-icons/fa";
 import { formatDistanceToNow } from "date-fns";
 import { sendFriendRequest } from "../firebaseService";
@@ -95,6 +96,12 @@ const Feed = ({ currentUser }) => {
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   // Después de los otros useState, agrega:
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+
+  // Después de los otros useState, agrega:
+  const [showSharePostModal, setShowSharePostModal] = useState(false);
+  const [selectedPostToShare, setSelectedPostToShare] = useState(null);
+  const [shareComment, setShareComment] = useState("");
+  const [sharingPost, setSharingPost] = useState(false);
 
   // Cargar amigos
   useEffect(() => {
@@ -519,6 +526,65 @@ const Feed = ({ currentUser }) => {
     setNewPostMedia([]);
     setPrivacy("public");
     setShowPostForm(false);
+  };
+
+  // Función para abrir modal de compartir post
+  const handleOpenSharePost = (post) => {
+    setSelectedPostToShare(post);
+    setShareComment("");
+    setShowSharePostModal(true);
+  };
+
+  // Función para crear un post compartido
+  const handleCreateSharedPost = async () => {
+    if (!selectedPostToShare) return;
+
+    setSharingPost(true);
+    try {
+      const sharedPostData = {
+        userId: currentUser.uid,
+        userName: currentUser.name,
+        userPhoto: currentUser.picture,
+        content: shareComment || `Compartió una publicación`,
+        sharedPost: {
+          originalPostId: selectedPostToShare.id,
+          originalUserId: selectedPostToShare.userId,
+          originalUserName: selectedPostToShare.userName,
+          originalUserPhoto: selectedPostToShare.userPhoto,
+          originalContent: selectedPostToShare.content,
+          originalMedia: selectedPostToShare.media || [],
+          originalTimestamp: selectedPostToShare.timestamp,
+        },
+        isShared: true,
+        privacy: "public", // Puedes permitir que el usuario elija la privacidad
+        timestamp: Date.now(),
+        likes: {},
+        comments: {},
+      };
+
+      const postsRef = ref(db, "posts");
+      const newPostRef = push(postsRef);
+      await set(newPostRef, sharedPostData);
+
+      // Actualizar UI
+      setPosts((prev) => [
+        {
+          id: newPostRef.key,
+          ...sharedPostData,
+        },
+        ...prev,
+      ]);
+
+      setShowSharePostModal(false);
+      setSelectedPostToShare(null);
+      setShareComment("");
+      showNotification("Publicación compartida correctamente", "success");
+    } catch (error) {
+      console.error("Error sharing post:", error);
+      showNotification("Error al compartir la publicación", "error");
+    } finally {
+      setSharingPost(false);
+    }
   };
 
   // Editar post
@@ -1332,6 +1398,11 @@ const Feed = ({ currentUser }) => {
             </div>
 
             <p className="px-4 pb-2 text-white">{post.content}</p>
+            {post.isShared && post.sharedPost && (
+              <div className="px-4 pb-2">
+                <SharedPostCard sharedPost={post.sharedPost} />
+              </div>
+            )}
 
             {post.media?.length > 0 && (
               <Carousel media={post.media} postId={post.id} />
@@ -1359,6 +1430,12 @@ const Feed = ({ currentUser }) => {
               >
                 <FaComment />
                 <span>{Object.keys(post.comments || {}).length}</span>
+              </button>
+              <button
+                onClick={() => handleOpenSharePost(post)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-gray-400 hover:bg-[#3A3B3C] transition"
+              >
+                <FaShare className="text-sm" />
               </button>
             </div>
 
@@ -1502,8 +1579,185 @@ const Feed = ({ currentUser }) => {
           </div>
         </div>
       )}
+      {/* Modal para compartir post */}
+      {showSharePostModal && selectedPostToShare && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center animate-fadeIn">
+          <div className="bg-[#242526] rounded-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="sticky top-0 bg-[#242526] p-4 border-b border-[#3E4042] flex justify-between items-center">
+              <h3 className="text-white font-semibold text-lg">
+                Compartir publicación
+              </h3>
+              <button
+                onClick={() => {
+                  setShowSharePostModal(false);
+                  setSelectedPostToShare(null);
+                  setShareComment("");
+                }}
+                className="text-gray-400 hover:text-white"
+              >
+                <FaTimes className="text-xl" />
+              </button>
+            </div>
+
+            <div className="p-4">
+              {/* Post que se va a compartir (vista previa) */}
+              <div className="bg-gray-800/50 rounded-xl p-3 mb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <img
+                    src={selectedPostToShare.userPhoto}
+                    alt={selectedPostToShare.userName}
+                    className="w-8 h-8 rounded-full object-cover"
+                  />
+                  <div>
+                    <p className="text-white text-sm font-medium">
+                      {selectedPostToShare.userName}
+                    </p>
+                    <p className="text-gray-400 text-xs">
+                      {formatDistanceToNow(selectedPostToShare.timestamp, {
+                        addSuffix: true,
+                        locale: es,
+                      })}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-gray-300 text-sm mb-2">
+                  {selectedPostToShare.content}
+                </p>
+                {selectedPostToShare.media?.length > 0 && (
+                  <img
+                    src={selectedPostToShare.media[0].url}
+                    alt="preview"
+                    className="w-full max-h-48 object-cover rounded-lg"
+                  />
+                )}
+              </div>
+
+              {/* Input para comentario */}
+              <textarea
+                value={shareComment}
+                onChange={(e) => setShareComment(e.target.value)}
+                placeholder="Escribe algo sobre esta publicación..."
+                className="w-full bg-[#3A3B3C] text-white p-3 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-[#2e9b4f]"
+                rows="3"
+              />
+
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => {
+                    setShowSharePostModal(false);
+                    setSelectedPostToShare(null);
+                    setShareComment("");
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleCreateSharedPost}
+                  disabled={sharingPost}
+                  className="flex-1 px-4 py-2 bg-[#2e9b4f] text-white rounded-lg hover:bg-[#268e46] transition disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {sharingPost ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Compartiendo...
+                    </>
+                  ) : (
+                    "Compartir"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default Feed;
+
+// Componente para mostrar el post original dentro del post compartido
+const SharedPostCard = ({ sharedPost }) => {
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const navigate = useNavigate();
+
+  const totalMedia = sharedPost.originalMedia?.length || 0;
+
+  const nextSlide = () => {
+    setCurrentSlide((prev) => (prev + 1) % totalMedia);
+  };
+
+  const prevSlide = () => {
+    setCurrentSlide((prev) => (prev - 1 + totalMedia) % totalMedia);
+  };
+
+  return (
+    <div
+      className="mt-3 border border-gray-700 rounded-xl overflow-hidden bg-gray-800/30 cursor-pointer hover:bg-gray-800/50 transition"
+      onClick={() => navigate(`/post/${sharedPost.originalPostId}`)}
+    >
+      {/* Header del post original */}
+      <div className="flex items-center gap-2 p-3 bg-gray-800/50">
+        <img
+          src={sharedPost.originalUserPhoto}
+          alt={sharedPost.originalUserName}
+          className="w-6 h-6 rounded-full object-cover"
+        />
+        <span className="text-xs text-gray-400">
+          {sharedPost.originalUserName}
+        </span>
+        <span className="text-xs text-gray-500">•</span>
+        <span className="text-xs text-gray-500">
+          {formatDistanceToNow(sharedPost.originalTimestamp, {
+            addSuffix: true,
+            locale: es,
+          })}
+        </span>
+      </div>
+
+      {/* Contenido del post original */}
+      {sharedPost.originalContent && (
+        <p className="px-3 pb-2 text-sm text-gray-300">
+          {sharedPost.originalContent}
+        </p>
+      )}
+
+      {/* Media del post original */}
+      {totalMedia > 0 && (
+        <div className="relative">
+          <img
+            src={sharedPost.originalMedia[currentSlide]?.url}
+            alt="shared content"
+            className="w-full max-h-96 object-contain"
+          />
+          {totalMedia > 1 && (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  prevSlide();
+                }}
+                className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 rounded-full p-1 text-white hover:bg-black/70"
+              >
+                <FaChevronLeft size={16} />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  nextSlide();
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 rounded-full p-1 text-white hover:bg-black/70"
+              >
+                <FaChevronRight size={16} />
+              </button>
+              <div className="absolute bottom-2 right-2 bg-black/50 rounded-full px-2 py-0.5 text-white text-xs">
+                {currentSlide + 1}/{totalMedia}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
