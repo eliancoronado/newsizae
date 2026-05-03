@@ -16,18 +16,6 @@ const collectElementIds = (elements) => {
   return ids;
 };
 
-const LANGUAGE_TYPES = {
-  documento: {
-    methods: ["elemento", "crearElemento", "seleccionar"],
-    type: "Documento",
-  },
-
-  Elemento: {
-    methods: ["evento", "agregarClase", "quitarClase", "alternarClase"],
-    properties: ["texto", "html", "valor", "clase"],
-  },
-};
-
 const CustomCodeEditor = ({
   value: propValue = "",
   onChange,
@@ -240,15 +228,117 @@ const CustomCodeEditor = ({
     });
   };
 
+  // Reemplaza LANGUAGE_TYPES con esta versión mejorada
+  const LANGUAGE_TYPES = {
+    documento: {
+      methods: ["elemento", "crearElemento", "seleccionar"],
+      type: "Documento",
+    },
+    Elemento: {
+      methods: [
+        "evento",
+        "agregarClase",
+        "quitarClase",
+        "alternarClase",
+        "agregarHijo",
+        "poner",
+      ],
+      properties: [
+        "texto",
+        "html",
+        "valor",
+        "clase",
+        "id",
+        "nombre",
+        "tipo",
+        "src",
+        "href",
+        "oculto",
+      ],
+    },
+    Mat: {
+      methods: [
+        "aleatorio",
+        "redondear",
+        "piso",
+        "techo",
+        "maximo",
+        "minimo",
+        "potencia",
+        "raiz",
+        "absoluto",
+        "seno",
+        "coseno",
+        "tangente",
+      ],
+      properties: ["PI", "E"],
+    },
+    almacenamiento: {
+      methods: ["guardar", "obtener", "eliminar", "limpiar", "clave"],
+      properties: ["longitud"],
+    },
+    fecha: {
+      methods: ["ahora", "parsear", "utc"],
+    },
+    fechaInstancia: {
+      methods: [
+        "año",
+        "mes",
+        "dia",
+        "horas",
+        "minutos",
+        "segundos",
+        "tiempo",
+        "aTexto",
+        "aISO",
+        "aLocal",
+      ],
+    },
+    array: {
+      methods: [
+        "quitarUltimo",
+        "quitarPrimero",
+        "agregarPrimero",
+        "unir",
+        "ordenar",
+        "invertir",
+        "incluye",
+        "encontrar",
+        "filtrar",
+        "mapear",
+        "reducir",
+      ],
+    },
+    string: {
+      methods: [
+        "mayusculas",
+        "minusculas",
+        "cortar",
+        "reemplazar",
+        "incluye",
+        "dividir",
+        "unir",
+        "limpiar",
+      ],
+    },
+    JSONE: {
+      methods: ["textear", "objeto"],
+    },
+    WebSocketWrapper: {
+      methods: ["enviar", "cerrar"],
+      properties: ["alAbrir", "alMensaje", "alError", "alCerrar", "estado"],
+    },
+  };
+
+  // Actualiza registerFullIntellisense con más sugerencias
   const registerFullIntellisense = (monaco, elementsList) => {
     const elementIds = collectElementIds(elementsList);
 
     return monaco.languages.registerCompletionItemProvider("espanol-lang", {
-      triggerCharacters: [".", '"', "'", "("],
+      triggerCharacters: [".", '"', "'", "(", " ", "\n"],
 
       provideCompletionItems: (model, position) => {
         const word = model.getWordUntilPosition(position);
-
         const range = {
           startLineNumber: position.lineNumber,
           endLineNumber: position.lineNumber,
@@ -265,51 +355,314 @@ const CustomCodeEditor = ({
 
         let suggestions = [];
 
-        /* =========================================
-         1️⃣ DESPUÉS DE .
-      ========================================== */
+        // 🔥 1. KEYWORDS (incluyendo todos los nuevos)
+        const keywords = [
+          // Estructuras base
+          {
+            label: "funcion",
+            detail: "🔷 Declarar función",
+            snippet: "funcion ${1:nombre}(${2:params}):\n\t${3:// código}\n",
+          },
+          {
+            label: "async funcion",
+            detail: "⚡ Función asíncrona",
+            snippet:
+              "async funcion ${1:nombre}(${2:params}):\n\t${3:// código asíncrono}\n",
+          },
+          {
+            label: "si",
+            detail: "🔷 Condicional",
+            snippet: "si (${1:condicion}):\n\t${2:// código}\n",
+          },
+          {
+            label: "sino",
+            detail: "🔷 Sino",
+            snippet: "sino:\n\t${1:// código}\n",
+          },
+          {
+            label: "mientras",
+            detail: "🔄 Bucle mientras",
+            snippet: "mientras (${1:condicion}):\n\t${2:// código}\n",
+          },
+          {
+            label: "para",
+            detail: "🔄 Bucle para",
+            snippet:
+              "para ${1:inicio}; ${2:condicion}; ${3:actualizacion}:\n\t${4:// código}\n",
+          },
+          {
+            label: "hacer",
+            detail: "🔄 Bucle hacer-mientras",
+            snippet: "hacer:\n\t${1:// código}\nmientras (${2:condicion})",
+          },
+          {
+            label: "retornar",
+            detail: "⬅️ Retornar valor",
+            snippet: "retornar ${1:valor}",
+          },
+          {
+            label: "imprimir",
+            detail: "📝 Imprimir en consola",
+            snippet: "imprimir(${1:mensaje})",
+          },
+          {
+            label: "clase",
+            detail: "🏷️ Declarar clase",
+            snippet: "clase ${1:Nombre}:\n\t${2:// métodos}\n",
+          },
+          {
+            label: "intentar",
+            detail: "⚠️ Manejo de errores",
+            snippet:
+              "intentar:\n\t${1:// código}\natrapar:\n\t${2:// manejo de error}\n",
+          },
+          {
+            label: "atrapar",
+            detail: "⚠️ Capturar error",
+            snippet: "atrapar:\n\t${1:// manejo de error}\n",
+          },
+          {
+            label: "elegir",
+            detail: "🔀 Switch/Case",
+            snippet:
+              "elegir ${1:variable}:\n\tcaso ${2:valor}:\n\t\t${3:// código}\n\tdefecto:\n\t\t${4:// código}\n",
+          },
+          { label: "caso", detail: "📌 Caso en switch" },
+          { label: "defecto", detail: "📌 Caso por defecto" },
+          { label: "romper", detail: "⏹️ Salir de bucle", snippet: "romper" },
+          {
+            label: "continuar",
+            detail: "⏩ Continuar bucle",
+            snippet: "continuar",
+          },
+          {
+            label: "esperar",
+            detail: "⏳ Esperar promesa (require async)",
+            snippet: "esperar ${1:promesa}",
+          },
 
+          // Constantes
+          { label: "verdadero", detail: "✅ Booleano verdadero" },
+          { label: "falso", detail: "❌ Booleano falso" },
+          { label: "nulo", detail: "🚫 Valor nulo" },
+
+          // Operadores lógicos
+          { label: "y", detail: "&& Operador Y lógico" },
+          { label: "o", detail: "|| Operador O lógico" },
+          { label: "no", detail: "! Operador NO lógico" },
+
+          // Objetos globales
+          { label: "documento", detail: "📄 Objeto DOM", snippet: "documento" },
+          { label: "Mat", detail: "🔢 Objeto matemático", snippet: "Mat" },
+          {
+            label: "almacenamiento",
+            detail: "💾 localStorage",
+            snippet: "almacenamiento",
+          },
+          { label: "fecha", detail: "📅 Objeto fecha", snippet: "fecha" },
+          { label: "JSONE", detail: "📦 JSON parser", snippet: "JSONE" },
+
+          // Funciones nativas
+          {
+            label: "alerta",
+            detail: "🔔 Mostrar alerta",
+            snippet: "alerta(${1:mensaje})",
+          },
+          {
+            label: "confirmar",
+            detail: "❓ Confirmar acción",
+            snippet: "confirmar(${1:pregunta})",
+          },
+          {
+            label: "preguntar",
+            detail: "💬 Prompt entrada",
+            snippet: "preguntar(${1:pregunta})",
+          },
+          {
+            label: "temporizador",
+            detail: "⏰ setTimeout",
+            snippet: "temporizador(funcion():\n\t${1:// código}\n, ${2:ms})",
+          },
+          {
+            label: "intervalo",
+            detail: "🔄 setInterval",
+            snippet: "intervalo(funcion():\n\t${1:// código}\n, ${2:ms})",
+          },
+          {
+            label: "limpiarIntervalo",
+            detail: "🧹 clearInterval",
+            snippet: "limpiarIntervalo(${1:id})",
+          },
+          {
+            label: "limpiarTemporizador",
+            detail: "🧹 clearTimeout",
+            snippet: "limpiarTemporizador(${1:id})",
+          },
+          {
+            label: "navegar",
+            detail: "🌐 Cambiar URL",
+            snippet: "navegar(${1:url})",
+          },
+          {
+            label: "recargar",
+            detail: "🔄 Recargar página",
+            snippet: "recargar()",
+          },
+          { label: "atras", detail: "⬅️ Historia atrás", snippet: "atras()" },
+          {
+            label: "adelante",
+            detail: "➡️ Historia adelante",
+            snippet: "adelante()",
+          },
+          {
+            label: "anchoPantalla",
+            detail: "📏 Ancho ventana",
+            snippet: "anchoPantalla()",
+          },
+          {
+            label: "altoPantalla",
+            detail: "📏 Alto ventana",
+            snippet: "altoPantalla()",
+          },
+          {
+            label: "solicitar",
+            detail: "🌐 Fetch API",
+            snippet: "solicitar(${1:url})",
+          },
+          {
+            label: "solicitarJSON",
+            detail: "📦 Fetch JSON",
+            snippet: "solicitarJSON(${1:url})",
+          },
+          {
+            label: "crearWebSocket",
+            detail: "🔌 WebSocket",
+            snippet: "crearWebSocket(${1:url})",
+          },
+          {
+            label: "imprimirConsola",
+            detail: "📝 console.log",
+            snippet: "imprimirConsola(${1:mensaje})",
+          },
+          {
+            label: "errorConsola",
+            detail: "❌ console.error",
+            snippet: "errorConsola(${1:error})",
+          },
+          {
+            label: "entero",
+            detail: "🔢 parseInt",
+            snippet: "entero(${1:valor})",
+          },
+          {
+            label: "numero",
+            detail: "🔢 parseFloat",
+            snippet: "numero(${1:valor})",
+          },
+          {
+            label: "tipo",
+            detail: "🔍 typeof",
+            snippet: "tipo(${1:variable})",
+          },
+          {
+            label: "longitud",
+            detail: "📏 .length",
+            snippet: "longitud(${1:array})",
+          },
+          {
+            label: "aleatorioEntre",
+            detail: "🎲 Random entre",
+            snippet: "aleatorioEntre(${1:min}, ${2:max})",
+          },
+        ];
+
+        /* =========================================
+       1️⃣ DESPUÉS DE . (propiedades/métodos)
+      ========================================== */
         const dotMatch = textUntilPosition.match(/([a-zA-Z_]\w*)\.$/);
 
         if (dotMatch) {
           const objectName = dotMatch[1];
 
-          if (objectName === "documento") {
-            suggestions = LANGUAGE_TYPES.documento.methods.map((method) => ({
+          // Buscar en LANGUAGE_TYPES
+          for (const [key, value] of Object.entries(LANGUAGE_TYPES)) {
+            if (objectName === key.toLowerCase() || objectName === key) {
+              const methods =
+                value.methods?.map((method) => ({
+                  label: method,
+                  kind: monaco.languages.CompletionItemKind.Method,
+                  insertText: method,
+                  range,
+                  detail: `🔹 Método de ${key}`,
+                })) || [];
+
+              const props =
+                value.properties?.map((prop) => ({
+                  label: prop,
+                  kind: monaco.languages.CompletionItemKind.Property,
+                  insertText: prop,
+                  range,
+                  detail: `🔸 Propiedad de ${key}`,
+                })) || [];
+
+              suggestions = [...methods, ...props];
+              break;
+            }
+          }
+
+          // Si es una variable de tipo WebSocket
+          if (objectName.match(/^ws|socket|webSocket$/i)) {
+            suggestions = LANGUAGE_TYPES.WebSocketWrapper.methods
+              .map((method) => ({
+                label: method,
+                kind: monaco.languages.CompletionItemKind.Method,
+                insertText: method,
+                range,
+                detail: "🔹 Método WebSocket",
+              }))
+              .concat(
+                LANGUAGE_TYPES.WebSocketWrapper.properties.map((prop) => ({
+                  label: prop,
+                  kind: monaco.languages.CompletionItemKind.Property,
+                  insertText: prop,
+                  range,
+                  detail: "🔸 Propiedad WebSocket",
+                })),
+              );
+          }
+
+          // Si es una fecha
+          if (objectName.match(/^fecha|date/i)) {
+            suggestions = LANGUAGE_TYPES.fechaInstancia.methods.map(
+              (method) => ({
+                label: method,
+                kind: monaco.languages.CompletionItemKind.Method,
+                insertText: method,
+                range,
+                detail: "📅 Método de fecha",
+              }),
+            );
+          }
+
+          // Si es un array
+          if (objectName.match(/^arr|lista|array/i)) {
+            suggestions = LANGUAGE_TYPES.array.methods.map((method) => ({
               label: method,
               kind: monaco.languages.CompletionItemKind.Method,
               insertText: method,
               range,
-              detail: "📄 Método de documento",
+              detail: "📊 Método de array",
             }));
-          } else {
-            const methods = LANGUAGE_TYPES.Elemento.methods.map((method) => ({
-              label: method,
-              kind: monaco.languages.CompletionItemKind.Method,
-              insertText: method,
-              range,
-              detail: "🔹 Método de Elemento",
-            }));
-
-            const props = LANGUAGE_TYPES.Elemento.properties.map((prop) => ({
-              label: prop,
-              kind: monaco.languages.CompletionItemKind.Property,
-              insertText: prop,
-              range,
-              detail: "🔸 Propiedad de Elemento",
-            }));
-
-            suggestions = [...methods, ...props];
           }
 
           return { suggestions };
         }
 
         /* =========================================
-         2️⃣ IDS EN documento.elemento("")
+       2️⃣ IDS EN documento.elemento("")
       ========================================== */
-
         const idPattern = /documento\.elemento\s*\(\s*["'][^"']*$/;
+        const selectorPattern = /documento\.seleccionar\s*\(\s*["'][^"']*$/;
 
         if (idPattern.test(textUntilPosition)) {
           suggestions = elementIds.map((id) => ({
@@ -319,30 +672,42 @@ const CustomCodeEditor = ({
             range,
             detail: "🔹 ID de elemento",
           }));
+          return { suggestions };
+        }
 
+        if (selectorPattern.test(textUntilPosition)) {
+          suggestions = elementIds
+            .map((id) => ({
+              label: `#${id}`,
+              kind: monaco.languages.CompletionItemKind.Value,
+              insertText: `#${id}`,
+              range,
+              detail: "🔹 Selector de ID",
+            }))
+            .concat(
+              elementIds.map((id) => ({
+                label: `.${id}-class`,
+                kind: monaco.languages.CompletionItemKind.Value,
+                insertText: `.${id}`,
+                range,
+                detail: "🔹 Sugerencia de clase",
+              })),
+            );
           return { suggestions };
         }
 
         /* =========================================
-         3️⃣ KEYWORDS
+       3️⃣ PALABRAS CLAVE GENERALES
       ========================================== */
-
-        const keywords = [
-          "funcion",
-          "si",
-          "sino",
-          "mientras",
-          "retornar",
-          "imprimir",
-          "verdadero",
-          "falso",
-        ];
-
         suggestions = keywords.map((kw) => ({
-          label: kw,
+          label: kw.label,
           kind: monaco.languages.CompletionItemKind.Keyword,
-          insertText: kw,
+          insertText: kw.snippet || kw.label,
+          insertTextRules: kw.snippet
+            ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+            : undefined,
           range,
+          detail: kw.detail || `🔷 ${kw.label}`,
         }));
 
         return { suggestions };

@@ -11,7 +11,7 @@ import AppB from "./components/AppB.jsx";
 
 // Componente que envuelve toda la app con pantalla completa
 const AppWithFullscreen = () => {
-  /*
+  
   const { enterFullscreen } = useFullscreen();
 
   // Agregar un listener para activar pantalla completa con el primer clic
@@ -28,7 +28,6 @@ const AppWithFullscreen = () => {
       document.removeEventListener("touchstart", handleFirstClick);
     };
   }, [enterFullscreen]);
-  */
   
 /*
   // Registrar Service Worker

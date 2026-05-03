@@ -37,8 +37,7 @@ class Lexer {
       }
 
       const parts = content.match(
-        /"[^"]*"|\d*\.\d+|\d+|\w+|==|!=|<=|>=|\[|\]|\{|\}|,|;|:|\(|\)|\+|\-|\*|\/|>|<|=|\./g,
-        //                                                                                          ^^^ Agregar el punto
+        /"[^"]*"|\d*\.\d+|\d+|\w+|==|!=|<=|>=|\+\+|\-\-|\+=|\-=|\*=|\/=|%=|<<|>>|&|\||\^|\?|:|\/\/.*|\[|\]|\{|\}|,|;|:|\(|\)|\+|\-|\*|\/|%|>|<|=|\./g,
       );
 
       if (!parts) continue;
@@ -64,6 +63,16 @@ class Lexer {
           romper: "BREAK",
           continuar: "CONTINUE",
           para: "FOR",
+          //
+          elegir: "SWITCH",
+          caso: "CASE",
+          defecto: "DEFAULT",
+          hacer: "DO",
+          modulo: "MODULO", // opcional, o usar símbolo %
+          importar: "IMPORT",
+          desde: "FROM",
+          async: "ASYNC",
+          esperar: "AWAIT", // await en español
         };
 
         if (keywords[p])
@@ -101,6 +110,10 @@ class Parser {
 
   peek() {
     return this.tokens[this.pos];
+  }
+  // O crea un método separado:
+  peekNext() {
+    return this.tokens[this.pos + 1];
   }
   next() {
     return this.tokens[this.pos++];
@@ -148,6 +161,120 @@ class Parser {
     };
   }
 
+  importStmt() {
+    this.next(); // IMPORT
+    let names = [];
+
+    if (this.peek().value === "{") {
+      this.next(); // consumir {
+      while (this.peek().value !== "}") {
+        names.push(this.next().value);
+        if (this.peek().value === ",") this.next();
+      }
+      this.next(); // consumir }
+    } else {
+      names.push(this.next().value);
+    }
+
+    if (this.peek().type !== "FROM") throw new Error("Se esperaba 'desde'");
+    this.next(); // FROM
+
+    const module = this.next().value; // string con el nombre del módulo
+
+    return { type: "Import", names, module };
+  }
+
+  switchStmt() {
+    this.next(); // SWITCH
+    const value = this.expression();
+
+    if (this.peek().value !== ":") throw new Error("Se esperaba ':'");
+    this.next(); // consumir :
+
+    // Saltar NEWLINEs e INDENT
+    while (this.peek().type === "NEWLINE") this.next();
+    if (this.peek().type !== "INDENT")
+      throw new Error("Se esperaba indentación");
+    this.next(); // consumir INDENT
+
+    const cases = [];
+    let defaultCase = null;
+
+    while (this.peek().type !== "DEDENT" && this.peek().type !== "EOF") {
+      if (this.peek().type === "NEWLINE") {
+        this.next();
+        continue;
+      }
+
+      if (this.peek().type === "CASE") {
+        this.next(); // CASE
+        const caseValue = this.expression();
+        if (this.peek().value !== ":") throw new Error("Se esperaba ':'");
+        this.next(); // consumir :
+
+        // Saltar NEWLINEs
+        while (this.peek().type === "NEWLINE") this.next();
+        if (this.peek().type !== "INDENT")
+          throw new Error("Se esperaba indentación en case");
+        this.next(); // consumir INDENT
+
+        const body = [];
+        while (this.peek().type !== "DEDENT" && this.peek().type !== "EOF") {
+          if (this.peek().type === "NEWLINE") {
+            this.next();
+            continue;
+          }
+          body.push(this.statement());
+          while (this.peek().type === "NEWLINE") this.next();
+        }
+        this.next(); // consumir DEDENT
+
+        cases.push({ type: "Case", value: caseValue, body });
+      } else if (this.peek().type === "DEFAULT") {
+        this.next(); // DEFAULT
+        if (this.peek().value !== ":") throw new Error("Se esperaba ':'");
+        this.next(); // consumir :
+
+        while (this.peek().type === "NEWLINE") this.next();
+        if (this.peek().type !== "INDENT")
+          throw new Error("Se esperaba indentación en default");
+        this.next(); // consumir INDENT
+
+        const body = [];
+        while (this.peek().type !== "DEDENT" && this.peek().type !== "EOF") {
+          if (this.peek().type === "NEWLINE") {
+            this.next();
+            continue;
+          }
+          body.push(this.statement());
+          while (this.peek().type === "NEWLINE") this.next();
+        }
+        this.next(); // consumir DEDENT
+
+        defaultCase = { type: "Default", body };
+      }
+    }
+
+    this.next(); // consumir DEDENT final del switch
+    return { type: "Switch", value, cases, default: defaultCase };
+  }
+
+  doWhileStmt() {
+    this.next(); // DO
+
+    if (this.peek().value !== ":") throw new Error("Se esperaba ':'");
+    this.next(); // consumir :
+
+    const body = this.block();
+
+    if (this.peek().type !== "WHILE") throw new Error("Se esperaba 'mientras'");
+    this.next(); // WHILE
+
+    const test = this.expression();
+
+    return { type: "DoWhile", test, body };
+  }
+
   statement() {
     const t = this.peek();
 
@@ -162,12 +289,16 @@ class Parser {
     }
     if (t.type === "FOR") return this.forStmt();
     if (t.type === "FUNCTION") return this.functionDecl();
+    if (t.type === "ASYNC") return this.functionDecl();
     if (t.type === "CLASS") return this.classDecl();
     if (t.type === "IF") return this.ifStmt();
     if (t.type === "WHILE") return this.whileStmt();
     if (t.type === "RETURN") return this.returnStmt();
     if (t.type === "PRINT") return this.printStmt();
     if (t.type === "TRY") return this.tryStmt();
+    if (t.type === "SWITCH") return this.switchStmt();
+    if (t.type === "DO") return this.doWhileStmt();
+    if (t.type === "IMPORT") return this.importStmt();
 
     // Verificar si es una asignación a una propiedad con THIS
     if (t.type === "THIS") {
@@ -187,10 +318,53 @@ class Parser {
     // 🔥 DETECTAR TODOS LOS CASOS DE IDENTIFICADOR EN UN SOLO BLOQUE
     if (t.type === "IDENTIFIER") {
       const startPos = this.pos;
+
+      // Guardar el nombre antes de consumir
+      const name = t.value;
+
+      // Guardar posición actual
+      const currentPos = this.pos;
+
+      // Ver el siguiente token sin consumirlo
+      // Avanzar para ver el siguiente token
+      this.next(); // consumir temporalmente el IDENTIFIER
+      const nextToken = this.peek();
+
+      // Restaurar posición
+      this.pos = currentPos;
+
+      // 🔥 Detectar operadores compuestos PRIMERO
+      if (
+        nextToken &&
+        ["+=", "-=", "*=", "/=", "%="].includes(nextToken.value)
+      ) {
+        // Consumir el IDENTIFIER
+        this.next(); // consumir IDENTIFIER
+        const opToken = this.next(); // consumir el operador compuesto
+        const operator = opToken.value[0];
+        const value = this.expression();
+
+        return {
+          type: "CompoundAssign",
+          name: name,
+          operator: operator,
+          value: value,
+        };
+      }
+
+      // Si no es compuesto, continuar con la lógica normal
       const expr = this.expression();
 
       console.log("Expresión parseada:", JSON.stringify(expr, null, 2));
       console.log("Siguiente token:", this.peek());
+
+      // 🔥 NUEVO: Manejar incremento/decremento como statement
+      if (expr.type === "Update") {
+        return {
+          type: "ExpressionStatement",
+          expression: expr,
+        };
+      }
 
       // Caso 1: Asignación (variable = valor  o  objeto.prop = valor)
       if (this.peek().value === "=") {
@@ -232,6 +406,14 @@ class Parser {
 
       // Caso 3: Llamada como statement (algo.algo(...))
       if (expr.type === "Call") {
+        return {
+          type: "ExpressionStatement",
+          expression: expr,
+        };
+      }
+
+      // 🔥 También manejar Unary expressions (ej: -5)
+      if (expr.type === "Unary") {
         return {
           type: "ExpressionStatement",
           expression: expr,
@@ -301,6 +483,14 @@ class Parser {
   }
 
   functionDecl() {
+    let isAsync = false;
+
+    // Detectar si es async
+    if (this.peek().type === "ASYNC") {
+      isAsync = true;
+      this.next(); // consumir ASYNC
+    }
+
     this.next(); // FUNCTION
     const name = this.next().value;
 
@@ -322,6 +512,7 @@ class Parser {
       name,
       params,
       body: this.block(),
+      async: isAsync, // ✅ ¡AGREGAR ESTA LÍNEA!
     };
   }
 
@@ -435,7 +626,15 @@ class Parser {
   }
 
   anonymousFunction() {
-    // ya consumimos FUNCTION
+    let isAsync = false;
+
+    // Detectar si es async
+    if (this.peek().type === "ASYNC") {
+      isAsync = true;
+      this.next(); // consumir ASYNC
+    }
+
+    this.next(); // FUNCTION (consumir FUNCTION)
 
     this.next(); // consumir (
 
@@ -456,6 +655,7 @@ class Parser {
       type: "AnonFunction",
       params,
       body: this.block(),
+      async: isAsync, // ✅ ¡AGREGAR ESTA LÍNEA!
     };
   }
 
@@ -474,6 +674,22 @@ class Parser {
     };
   }
 
+  compoundAssignment() {
+    const name = this.next().value; // nombre de la variable
+    const opToken = this.next(); // operador compuesto
+    const op = opToken.value[0]; // extraer el operador base (+, -, *, /, %)
+    const value = this.expression();
+
+    console.log("CompoundAssign - name:", name, "op:", op, "value:", value);
+
+    return {
+      type: "CompoundAssign",
+      name: name,
+      operator: op,
+      value: value,
+    };
+  }
+
   logicalOr() {
     let expr = this.logicalAnd();
 
@@ -482,6 +698,21 @@ class Parser {
       this.next();
       const right = this.logicalAnd();
       expr = { type: "Binary", left: expr, op, right };
+    }
+
+    return expr;
+  }
+
+  ternary() {
+    let expr = this.shift(); // Cambiar de bitwiseOr a shift
+
+    if (this.peek().value === "?") {
+      this.next();
+      const consequent = this.expression();
+      if (this.peek().value !== ":") throw new Error("Se esperaba ':'");
+      this.next();
+      const alternate = this.expression();
+      expr = { type: "Ternary", test: expr, consequent, alternate };
     }
 
     return expr;
@@ -498,10 +729,6 @@ class Parser {
     }
 
     return expr;
-  }
-
-  expression() {
-    return this.logicalOr();
   }
 
   equality() {
@@ -543,7 +770,8 @@ class Parser {
   factor() {
     let expr = this.unary();
 
-    while (["*", "/"].includes(this.peek().value)) {
+    // En factor(), después de while (["*", "/"].includes...
+    while (["*", "/", "%"].includes(this.peek().value)) {
       const op = this.next().value;
       const right = this.unary();
       expr = { type: "Binary", left: expr, op, right };
@@ -552,7 +780,68 @@ class Parser {
     return expr;
   }
 
+  bitwiseOr() {
+    let expr = this.bitwiseXor();
+
+    while (this.peek().value === "|") {
+      const op = this.next().value;
+      const right = this.bitwiseXor();
+      expr = { type: "Binary", left: expr, op, right };
+    }
+
+    return expr;
+  }
+
+  bitwiseXor() {
+    let expr = this.bitwiseAnd();
+
+    while (this.peek().value === "^") {
+      const op = this.next().value;
+      const right = this.bitwiseAnd();
+      expr = { type: "Binary", left: expr, op, right };
+    }
+
+    return expr;
+  }
+
+  bitwiseAnd() {
+    let expr = this.equality();
+
+    while (this.peek().value === "&") {
+      const op = this.next().value;
+      const right = this.equality();
+      expr = { type: "Binary", left: expr, op, right };
+    }
+
+    return expr;
+  }
+
+  // Shift operators (<<, >>)
+  shift() {
+    let expr = this.bitwiseOr();
+
+    while (["<<", ">>"].includes(this.peek().value)) {
+      const op = this.next().value;
+      const right = this.bitwiseOr();
+      expr = { type: "Binary", left: expr, op, right };
+    }
+
+    return expr;
+  }
+
+  // Modificar expression() para incluir bitwise
+  expression() {
+    return this.ternary();
+  }
+
   unary() {
+    // Detectar prefijos ++ y --
+    if (this.peek().value === "++" || this.peek().value === "--") {
+      const op = this.next().value;
+      const expr = this.primary();
+      return { type: "Update", operator: op, argument: expr, prefix: true };
+    }
+
     if (this.peek().type === "NOT") {
       this.next();
       const right = this.unary();
@@ -572,6 +861,13 @@ class Parser {
     let expr = this.primary();
 
     while (true) {
+      // 🔥 DETECTAR AWAIT
+      if (this.peek().type === "AWAIT") {
+        this.next(); // consumir AWAIT
+        const arg = this.call(); // la expresión después de await
+        expr = { type: "Await", argument: arg };
+        continue;
+      }
       if (this.peek().value === "(") {
         this.next(); // (
 
@@ -605,6 +901,12 @@ class Parser {
   primary() {
     const t = this.next();
 
+    // 🔥 AWAIT puede empezar una expresión primaria
+    if (t.type === "AWAIT") {
+      const arg = this.expression();
+      return { type: "Await", argument: arg };
+    }
+
     if (t.type === "NUMBER") return { type: "Literal", value: Number(t.value) };
 
     if (t.type === "STRING")
@@ -612,7 +914,19 @@ class Parser {
 
     if (t.type === "THIS") return { type: "This" };
 
-    if (t.type === "IDENTIFIER") return { type: "Variable", name: t.value };
+    if (t.type === "IDENTIFIER") {
+      // Detectar postfix ++ o --
+      if (this.peek().value === "++" || this.peek().value === "--") {
+        const op = this.next().value;
+        return {
+          type: "Update",
+          operator: op,
+          argument: { type: "Variable", name: t.value },
+          prefix: false,
+        };
+      }
+      return { type: "Variable", name: t.value };
+    }
 
     if (t.type === "TRUE") return { type: "Literal", value: true };
     if (t.type === "FALSE") return { type: "Literal", value: false };
@@ -690,8 +1004,9 @@ class JSGenerator {
         return `${objectJS}.${node.name} = ${this.generate(node.value)};`;
 
       case "Function":
+        const asyncKeyword = node.async ? "async " : "";
         return `
-function ${node.name}(${node.params.join(", ")}) {
+${asyncKeyword}function ${node.name}(${node.params.join(", ")}) {
 ${node.body.map((n) => this.generate(n)).join("\n")}
 }
 `;
@@ -1063,9 +1378,13 @@ ${node.body.map((n) => this.generate(n)).join("\n")}
 `;
 
       case "AnonFunction":
-        return `(${node.params.join(", ")}) => {
+        const asyncKw = node.async ? "async " : "";
+        return `${asyncKw}(${node.params.join(", ")}) => {
 ${node.body.map((n) => this.generate(n)).join("\n")}
 }`;
+
+      case "Await":
+        return `await ${this.generate(node.argument)}`;
 
       case "Try":
         return `
@@ -1123,6 +1442,47 @@ ${node.body.map((n) => this.generate(n)).join("\n")}
       case "Object":
         return `{${node.props.map((p) => `${p.key}: ${this.generate(p.value)}`).join(", ")}}`;
 
+      case "CompoundAssign":
+        // Esto genera: contador = contador + 5
+        return `${node.name} = ${node.name} ${node.operator} ${this.generate(node.value)};`;
+
+      case "Update":
+        if (node.prefix) {
+          // ++i o --i
+          return `${node.operator}${this.generate(node.argument)}`;
+        } else {
+          // i++ o i--
+          return `${this.generate(node.argument)}${node.operator}`;
+        }
+
+      case "Ternary":
+        return `${this.generate(node.test)} ? ${this.generate(node.consequent)} : ${this.generate(node.alternate)}`;
+
+      case "Switch":
+        let switchCode = `switch (${this.generate(node.value)}) {\n`;
+        node.cases.forEach((c) => {
+          switchCode += `  case ${this.generate(c.value)}:\n`;
+          c.body.forEach((stmt) => {
+            switchCode += `    ${this.generate(stmt)}\n`;
+          });
+          switchCode += `    break;\n`;
+        });
+        if (node.default) {
+          switchCode += `  default:\n`;
+          node.default.body.forEach((stmt) => {
+            switchCode += `    ${this.generate(stmt)}\n`;
+          });
+        }
+        switchCode += `}`;
+        return switchCode;
+
+      case "DoWhile":
+        return `do {\n${node.body.map((n) => this.generate(n)).join("\n")}\n} while (${this.generate(node.test)});`;
+
+      case "Import":
+        const names = node.names.join(", ");
+        return `import { ${names} } from ${node.module};`;
+
       default:
         return "";
     }
@@ -1166,6 +1526,87 @@ class DocumentoEspanol {
 
   seleccionar(selector) {
     return document.querySelector(selector);
+  }
+}
+
+// WebSocket wrapper para manejar eventos en tu lenguaje
+class WebSocketWrapper {
+  constructor(ws) {
+    this._ws = ws;
+    this._onopen = null;
+    this._onmessage = null;
+    this._onerror = null;
+    this._onclose = null;
+
+    // Configurar handlers nativos
+    ws.onopen = (event) => {
+      if (this._onopen) this._onopen(event);
+    };
+
+    ws.onmessage = (event) => {
+      if (this._onmessage) this._onmessage(event.data);
+    };
+
+    ws.onerror = (error) => {
+      if (this._onerror) this._onerror(error);
+    };
+
+    ws.onclose = (event) => {
+      if (this._onclose) this._onclose(event.code, event.reason);
+    };
+  }
+
+  // Métodos públicos
+  enviar(mensaje) {
+    this._ws.send(mensaje);
+  }
+
+  cerrar() {
+    this._ws.close();
+  }
+
+  // Getters/Setters para eventos
+  get alAbrir() {
+    return this._onopen;
+  }
+  set alAbrir(handler) {
+    this._onopen = handler;
+  }
+
+  get alMensaje() {
+    return this._onmessage;
+  }
+  set alMensaje(handler) {
+    this._onmessage = handler;
+  }
+
+  get alError() {
+    return this._onerror;
+  }
+  set alError(handler) {
+    this._onerror = handler;
+  }
+
+  get alCerrar() {
+    return this._onclose;
+  }
+  set alCerrar(handler) {
+    this._onclose = handler;
+  }
+
+  get estado() {
+    switch (this._ws.readyState) {
+      case 0:
+        return "CONECTANDO";
+      case 1:
+        return "ABIERTO";
+      case 2:
+        return "CERRANDO";
+      case 3:
+        return "CERRADO";
+      default:
+        return "DESCONOCIDO";
+    }
   }
 }
 
@@ -1328,6 +1769,71 @@ class Interpreter {
         js: "console.warn",
         runtime: (...args) => console.warn(...args),
       },
+      solicitar: {
+        js: "fetch",
+        runtime: async (url, options = {}) => {
+          try {
+            const response = await fetch(url, options);
+            return {
+              ok: response.ok,
+              status: response.status,
+              statusText: response.statusText,
+              headers: response.headers,
+              json: async () => await response.json(),
+              text: async () => await response.text(),
+              _rawResponse: response,
+            };
+          } catch (error) {
+            throw new Error("Error en solicitud: " + error.message);
+          }
+        },
+      },
+
+      solicitarJSON: {
+        js: (args) => `fetch(${args[0]}).then(r => r.json())`,
+        runtime: async (url) => {
+          const response = await fetch(url);
+          return await response.json();
+        },
+      },
+
+      solicitarTexto: {
+        js: (args) => `fetch(${args[0]}).then(r => r.text())`,
+        runtime: async (url) => {
+          const response = await fetch(url);
+          return await response.text();
+        },
+      },
+
+      // ===== WEB SOCKETS =====
+      crearWebSocket: {
+        js: "WebSocket",
+        runtime: (url) => {
+          const ws = new WebSocket(url);
+          // Crear un wrapper para manejar eventos
+          return new WebSocketWrapper(ws);
+        },
+      },
+
+      // En nativeFunctions, añade:
+      metodosHTTP: {
+        js: (args) => {
+          const [url, method, body, headers] = args;
+          return `fetch(${url}, { method: ${method}, body: ${body}, headers: ${headers} })`;
+        },
+        runtime: async (url, method = "GET", body = null, headers = {}) => {
+          const options = { method };
+          if (body) options.body = body;
+          if (Object.keys(headers).length) options.headers = headers;
+
+          const response = await fetch(url, options);
+          return {
+            ok: response.ok,
+            status: response.status,
+            data: await response.json(),
+          };
+        },
+      },
     };
 
     // 🔥 AUTO-REGISTRO EN ENTORNO GLOBAL
@@ -1352,6 +1858,20 @@ class Interpreter {
         thisObj.fields[node.prop] = this.eval(node.value, env);
         break;
 
+      case "Await":
+        if (!env.get("__isAsync")) {
+          throw new Error(
+            "'esperar' solo puede usarse dentro de funciones 'async'",
+          );
+        }
+        const promise = this.eval(node.argument, env);
+        if (promise && typeof promise.then === "function") {
+          // Para simplificar, retornamos la promesa
+          // En una implementación completa, necesitarías manejar async/await
+          return promise;
+        }
+        return promise;
+
       case "AnonFunction":
         return {
           type: "UserFunction",
@@ -1361,6 +1881,85 @@ class Interpreter {
           },
           closure: env,
         };
+
+      case "CompoundAssign":
+        const currentValue = env.get(node.name);
+        const rightValue = this.eval(node.value, env);
+        let newValue;
+        switch (node.operator) {
+          case "+":
+            newValue = currentValue + rightValue;
+            break;
+          case "-":
+            newValue = currentValue - rightValue;
+            break;
+          case "*":
+            newValue = currentValue * rightValue;
+            break;
+          case "/":
+            newValue = currentValue / rightValue;
+            break;
+          case "%":
+            newValue = currentValue % rightValue;
+            break;
+          default:
+            newValue = rightValue;
+        }
+        env.assign(node.name, newValue);
+        break;
+
+      case "Update":
+        let variable;
+        if (node.argument.type === "Variable") {
+          variable = env.get(node.argument.name);
+        }
+        const increment = node.operator === "++" ? 1 : -1;
+        const newVal = variable + increment;
+        env.assign(node.argument.name, newVal);
+        return node.prefix ? newVal : variable;
+
+      case "Ternary":
+        return this.eval(node.test, env)
+          ? this.eval(node.consequent, env)
+          : this.eval(node.alternate, env);
+
+      case "Switch":
+        const switchValue = this.eval(node.value, env);
+        let matched = false;
+
+        for (const caseItem of node.cases) {
+          const caseValue = this.eval(caseItem.value, env);
+          if (switchValue === caseValue || matched) {
+            matched = true;
+            for (const stmt of caseItem.body) {
+              this.eval(stmt, env);
+            }
+          }
+        }
+
+        if (!matched && node.default) {
+          for (const stmt of node.default.body) {
+            this.eval(stmt, env);
+          }
+        }
+        break;
+
+      case "DoWhile":
+        do {
+          try {
+            node.body.forEach((n) => this.eval(n, env));
+          } catch (signal) {
+            if (signal && signal.__break) break;
+            if (signal && signal.__continue) continue;
+            throw signal;
+          }
+        } while (this.eval(node.test, env));
+        break;
+
+      case "Import":
+        // Cargar módulo dinámicamente (requiere implementación adicional)
+        console.warn("Importación aún no implementada completamente");
+        break;
 
       case "Class":
         const methods = {};
@@ -1388,7 +1987,13 @@ class Interpreter {
         // 🔥 Primero verificar si es función JS nativa
         if (typeof callee === "function") {
           const args = node.args.map((arg) => this.eval(arg, env));
-          return callee(...args);
+          const result = callee(...args);
+          // 🔥 Manejar promesas automáticamente
+          if (result && typeof result.then === "function") {
+            // Devolver la promesa para manejo async
+            return result;
+          }
+          return result;
         }
 
         if (
@@ -1463,6 +2068,11 @@ class Interpreter {
           closure: env, // Importante: guardar el entorno actual como clausura
         };
 
+        const localEnv = new Environment(env);
+        if (node.async) {
+          localEnv.define("__isAsync", true);
+        }
+
         env.define(node.name, func);
         break;
 
@@ -1530,6 +2140,8 @@ class Interpreter {
 
       case "Expression":
         return this.eval(node.expr, env);
+      case "ExpressionStatement":
+        return this.eval(node.expression, env);
       case "Literal":
         return node.value;
       case "Break":
