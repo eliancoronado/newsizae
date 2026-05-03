@@ -13,12 +13,18 @@ export default function Chat({ currentUser, setActiveTab }) {
     friendName,
     friendPhoto,
     friendStatus,
+    openVideo = null,
   ) => {
     // Marcar mensajes como leídos antes de abrir el chat
     const userChatRef = ref(db, `userChats/${currentUser.uid}/${friendId}`);
     await update(userChatRef, { unreadCount: 0 });
-
-    setSelectedFriend({ friendId, friendName, friendPhoto, friendStatus });
+    // 🔥 Forzar un pequeño retraso para que Firebase procese el cambio
+    setTimeout(() => {
+      setSelectedFriend({ friendId, friendName, friendPhoto, friendStatus });
+    }, 150);
+    if (openVideo) {
+      localStorage.setItem("openSharedVideo", JSON.stringify(openVideo));
+    }
   };
 
   const handleBack = () => {

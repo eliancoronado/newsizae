@@ -10,6 +10,7 @@ import {
   FaImage,
   FaSmile,
   FaPaperPlane,
+  FaPlay,
 } from "react-icons/fa";
 import { getAuth } from "firebase/auth";
 import { sendPushNotification } from "../utils/notifications";
@@ -462,6 +463,47 @@ export default function ChatWindow({
                       className="rounded-2xl max-w-full max-h-60 object-cover cursor-pointer hover:opacity-90 transition"
                       onClick={() => setPreviewImage(msg.imageUrl)}
                     />
+                  </div>
+                )}
+                {/* Video compartido */}
+                {msg.type === "shared_video" && msg.videoId && (
+                  <div
+                    className="mb-1 cursor-pointer group relative"
+                    onClick={() => {
+                      localStorage.setItem("sharedVideoId", msg.videoId);
+                      onBack();
+                    }}
+                  >
+                    <div className="relative rounded-2xl overflow-hidden bg-gray-800">
+                      {/* Preview del video con overlay */}
+                      <div className="relative">
+                        <div className="w-full h-48 flex items-center justify-center bg-gray-900">
+                          <FaPlay className="text-white text-4xl opacity-50" />
+                        </div>
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                          <div className="bg-black/60 rounded-full p-3">
+                            <FaPlay className="text-white text-2xl" />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Info del video original */}
+                      <div className="p-2 bg-gray-800/80">
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={msg.videoUserPhoto}
+                            alt=""
+                            className="w-5 h-5 rounded-full object-cover"
+                          />
+                          <span className="text-xs text-gray-300">
+                            Video de {msg.videoUserName}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Compartido por {msg.senderName}
+                    </p>
                   </div>
                 )}
                 {msg.type === "sticker" && msg.stickerUrl && (

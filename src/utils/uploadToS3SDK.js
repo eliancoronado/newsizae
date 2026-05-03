@@ -5,6 +5,14 @@ import {
   ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import imageCompression from "browser-image-compression";
+import { compressVideo, initFFmpeg } from "./videoCompression";
+
+// Pre-cargar FFmpeg en segundo plano cuando la app inicia
+export const preloadFFmpeg = () => {
+  setTimeout(() => {
+    initFFmpeg().catch(console.warn);
+  }, 3000);
+};
 
 // Configuración directa (reemplaza con tus credenciales)
 const s3Client = new S3Client({
@@ -15,7 +23,16 @@ const s3Client = new S3Client({
   },
 });
 import { db } from "../firebase";
-import { ref, set, get, remove, push, query, orderByChild, equalTo } from "firebase/database";
+import {
+  ref,
+  set,
+  get,
+  remove,
+  push,
+  query,
+  orderByChild,
+  equalTo,
+} from "firebase/database";
 
 const S3_BUCKET = "mis-proyectos-sizae-app";
 
@@ -323,7 +340,7 @@ export const uploadVideoToS3 = async (file, onProgress) => {
       Bucket: "mis-proyectos-sizae-app",
       Key: fileName,
       Body: arrayBuffer, // Usar ArrayBuffer en lugar del File directamente
-      ContentType: file.type,
+      ContentType: "video/mp4",
       ACL: "public-read",
     };
 

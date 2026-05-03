@@ -25,6 +25,7 @@ import {
 } from "react-icons/fa";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
+import ShareVideoModal from "./ShareVideoModal";
 
 const Video = ({ currentUser }) => {
   const [videos, setVideos] = useState([]);
@@ -47,6 +48,10 @@ const Video = ({ currentUser }) => {
   const videoRefs = useRef({});
   const containerRef = useRef(null);
   const observerRef = useRef(null);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [selectedVideoToShare, setSelectedVideoToShare] = useState(null);
+  // Agrega este estado con los otros useState
+  const [isSharedVideoMode, setIsSharedVideoMode] = useState(false);
 
   // Cargar amigos y solicitudes
   useEffect(() => {
@@ -128,8 +133,60 @@ const Video = ({ currentUser }) => {
     }
   }, [videos, friendsIds, pendingRequests, currentUser.uid]);
 
-  // Cargar solo posts que contienen videos
+  // Cargar video compartido primero si existe
+  // Cargar video compartido por ID desde Firebase - MODO SOLO VIDEO
   useEffect(() => {
+    const loadSharedVideo = async () => {
+      const sharedVideoId = localStorage.getItem("sharedVideoId");
+      if (sharedVideoId) {
+        setIsSharedVideoMode(true); // Activar modo solo video
+        setLoading(true);
+
+        try {
+          // Limpiar el localStorage
+          localStorage.removeItem("sharedVideoId");
+
+          const postRef = ref(db, `posts/${sharedVideoId}`);
+          const snapshot = await get(postRef);
+
+          if (snapshot.exists()) {
+            const post = snapshot.val();
+            let videoMedia = null;
+            if (post.media && post.media.length > 0) {
+              videoMedia = post.media.find((m) => m.type === "video");
+            }
+            if (post.videos && post.videos.length > 0 && !videoMedia) {
+              videoMedia = { type: "video", url: post.videos[0] };
+            }
+
+            if (videoMedia) {
+              const sharedVideo = {
+                id: sharedVideoId,
+                ...post,
+                video: videoMedia,
+                likes: post.likes || {},
+                comments: post.comments || {},
+              };
+              setVideos([sharedVideo]);
+              setCurrentIndex(0);
+            }
+          }
+          setLoading(false);
+        } catch (error) {
+          console.error("Error loading shared video:", error);
+          setLoading(false);
+        }
+      }
+    };
+
+    loadSharedVideo();
+  }, []); // Solo se ejecuta una vez al montar
+
+  // Cargar todos los videos - SOLO si NO estamos en modo video compartido
+  useEffect(() => {
+    // Si ya estamos en modo video compartido, no cargar todos los videos
+    if (isSharedVideoMode) return;
+
     const postsRef = ref(db, "posts");
     const unsubscribe = onValue(postsRef, (snapshot) => {
       const data = snapshot.val();
@@ -178,7 +235,7 @@ const Video = ({ currentUser }) => {
     });
 
     return () => unsubscribe();
-  }, [friendsIds, currentUser.uid]);
+  }, [friendsIds, currentUser.uid, isSharedVideoMode]); // Dependencia añadida
 
   // Observer para scroll tipo TikTok
   useEffect(() => {
@@ -218,6 +275,11 @@ const Video = ({ currentUser }) => {
       }
     };
   }, [videos]);
+
+  const handleShareVideo = (video) => {
+    setSelectedVideoToShare(video);
+    setShowShareModal(true);
+  };
 
   // Control de video
   const togglePlay = (index) => {
@@ -607,7 +669,11 @@ const Video = ({ currentUser }) => {
       ref={containerRef}
       className="h-screen overflow-y-scroll snap-y snap-mandatory bg-black"
     >
-      <LikeAnimation visible={showLikeEffect.visible} x={showLikeEffect.x} y={showLikeEffect.y} />
+      <LikeAnimation
+        visible={showLikeEffect.visible}
+        x={showLikeEffect.x}
+        y={showLikeEffect.y}
+      />
       {videos.map((video, index) => (
         <div
           key={video.id}
@@ -642,7 +708,17 @@ const Video = ({ currentUser }) => {
             loop
             muted={index !== currentIndex}
             playsInline
+             preload="metadata"
             onClick={() => togglePlay(index)}
+            onError={(e) => {
+              console.error("Video error:", e);
+              console.log("URL del video que falla:", video.video.url);
+              // Intentar recargar el video
+              const videoEl = e.target;
+              if (videoEl) {
+                videoEl.load();
+              }
+            }}
           />
 
           <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/60 pointer-events-none" />
@@ -711,7 +787,10 @@ const Video = ({ currentUser }) => {
               </span>
             </button>
 
-            <button className="flex flex-col items-center">
+            <button
+              onClick={() => handleShareVideo(video)}
+              className="flex flex-col items-center"
+            >
               <div className="bg-black/40 rounded-full p-3">
                 <FaShare className="text-3xl text-white" />
               </div>
@@ -738,6 +817,21 @@ const Video = ({ currentUser }) => {
           onClose={() => {
             setShowComments(false);
             setSelectedPost(null);
+          }}
+        />
+      )}
+
+      {showShareModal && selectedVideoToShare && (
+        <ShareVideoModal
+          currentUser={currentUser}
+          video={selectedVideoToShare}
+          onClose={() => {
+            setShowShareModal(false);
+            setSelectedVideoToShare(null);
+          }}
+          onShare={(friendId) => {
+            setShowShareModal(false);
+            setSelectedVideoToShare(null);
           }}
         />
       )}

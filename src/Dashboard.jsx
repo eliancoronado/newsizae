@@ -26,6 +26,7 @@ import ProjectsPage from "./components/ProjectsPage";
 import Video from "./components/Video";
 import { FaCodeBranch, FaFacebookMessenger } from "react-icons/fa6";
 import { BiSolidMessageAltDetail } from "react-icons/bi";
+import { preloadFFmpeg } from "./utils/uploadToS3SDK";
 
 // 🎨 Componente Skeleton para los amigos (lista horizontal)
 const FriendsSkeleton = () => (
@@ -85,10 +86,15 @@ export default function Dashboard() {
   const [totalUnread, setTotalUnread] = useState(0);
   const { enterFullscreen } = useFullscreen();
   // Agrega estos estados
+  const [badgeVersion, setBadgeVersion] = useState(0);
   const [showReelUploader, setShowReelUploader] = useState(false);
   // ... estados existentes ...
   const { requestPermission, notification, setNotification } =
     useNotifications(user);
+
+  useEffect(() => {
+    preloadFFmpeg(); // Precargar FFmpeg en segundo plano
+  }, []);
 
   // Solicitar permisos de notificación cuando el usuario está logueado
   useEffect(() => {
@@ -111,23 +117,40 @@ export default function Dashboard() {
       const data = snapshot.val();
       if (!data) {
         setTotalUnread(0);
+        setBadgeVersion((prev) => prev + 1); // 🔥 Forzar actualización
         return;
       }
 
       let total = 0;
-
       Object.values(data).forEach((chat) => {
         total += chat.unreadCount || 0;
       });
 
-      console.log("📊 Total unread:", total);
-
+      console.log("📊 Total unread en Dashboard:", total);
       setTotalUnread(total);
-      console.log("🔥 userChats snapshot:", data);
+      setBadgeVersion((prev) => prev + 1); // 🔥 Forzar actualización del badge
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, activeTab]);
+
+  // Cargar video compartido al cambiar a reels
+  // Detectar cuando hay un video compartido para cambiar a reels
+  useEffect(() => {
+    const checkSharedVideo = () => {
+      const sharedVideoId = localStorage.getItem("sharedVideoId");
+      if (sharedVideoId && activeTab !== "reels") {
+        setActiveTab("reels");
+      }
+    };
+
+    // Verificar al montar y cuando cambia la URL
+    checkSharedVideo();
+
+    // También verificar periódicamente (por si acaso)
+    const interval = setInterval(checkSharedVideo, 500);
+    return () => clearInterval(interval);
+  }, [activeTab]);
 
   // Función para obtener datos del usuario desde Firebase
   const getUserData = async (uid) => {
@@ -625,7 +648,10 @@ export default function Dashboard() {
                   >
                     <BiSolidMessageAltDetail className="text-2xl text-white" />
                     {totalUnread > 0 && (
-                      <span className="absolute -top-1 -right-2 bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                      <span
+                        key={`badge-${badgeVersion}-${totalUnread}`}
+                        className="absolute -top-1 -right-2 bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1"
+                      >
                         {totalUnread > 99 ? "99+" : totalUnread}
                       </span>
                     )}

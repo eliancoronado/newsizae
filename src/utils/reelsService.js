@@ -2,7 +2,6 @@
 import { ref, push, set, get, update, onValue, query, orderByChild, limitToLast } from "firebase/database";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../firebase";
-import { compressVideo, generateThumbnail } from "./videoCompression";
 
 // Subir reel
 export const uploadReel = async (userId, videoFile, data, onProgress) => {
