@@ -3,7 +3,7 @@ import { uploadGeneratedFileToS3 } from "./uploadToS3SDK";
 
 // Convierte camelCase a kebab-case para CSS
 const camelToKebab = (str) => {
-  return str.replace(/([a-z0-9]|(?=[A-Z]))([A-Z])/g, '$1-$2').toLowerCase();
+  return str.replace(/([a-z0-9]|(?=[A-Z]))([A-Z])/g, "$1-$2").toLowerCase();
 };
 
 // Convierte objeto de estilos a string CSS
@@ -64,7 +64,9 @@ const renderElement = (element) => {
     href: href ? `href="${href}"` : "",
     src: src ? `src="${src}"` : "",
     "data-aos": animation ? `data-aos="${animation}"` : "",
-    "data-aos-duration": duracionanim ? `data-aos-duration="${duracionanim}"` : "",
+    "data-aos-duration": duracionanim
+      ? `data-aos-duration="${duracionanim}"`
+      : "",
     "data-aos-delay": retrasoanim ? `data-aos-delay="${retrasoanim}"` : "",
   };
 
@@ -84,7 +86,9 @@ const renderElement = (element) => {
 
   // Para elementos con apertura y cierre
   const content = text || childrenHtml || "";
-  return `<${tag} ${attributes.id} ${attributes.class} ${styleAttr} ${attributes.href} ${attributes.src}>${content}</${tag}>`;
+  return `<${tag} ${attributes.id} ${attributes.class} ${styleAttr} ${attributes.href} ${attributes.src} ${attributes["data-aos"]}
+  ${attributes["data-aos-duration"]}
+  ${attributes["data-aos-delay"]}>${content}</${tag}>`;
 };
 
 // Genera el HTML completo a partir de los elementos
@@ -96,27 +100,32 @@ export const generateHTML = (droppedElements) => {
 // Genera el CSS a partir de los estilos globales
 export const generateCSS = (globalStyles) => {
   if (!globalStyles || globalStyles.length === 0) return "";
-  
+
   const cssRules = [];
   for (const style of globalStyles) {
     const className = style.name;
     const styles = style.styles || {};
-    
+
     const validStyles = Object.entries(styles)
       .filter(([_, value]) => value && value !== "" && value !== "undefined")
       .map(([key, value]) => `${camelToKebab(key)}: ${value};`)
       .join(" ");
-    
+
     if (validStyles) {
       cssRules.push(`.${className} { ${validStyles} }`);
     }
   }
-  
+
   return cssRules.join("\n");
 };
 
 // Genera el HTML completo con plantilla
-export const generateFullHTML = (bodyContent, cssContent, pageName, jsCode = "") => {
+export const generateFullHTML = (
+  bodyContent,
+  cssContent,
+  pageName,
+  jsCode = "",
+) => {
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -145,7 +154,9 @@ export const generateFullHTML = (bodyContent, cssContent, pageName, jsCode = "")
     ${bodyContent}
     <script src="https://unpkg.com/aos@next/dist/aos.js"></script>
     <script>
-        AOS.init();
+        AOS.init({
+          once: true, // Animaciones solo la primera vez
+        });
     </script>
     <script>
         ${jsCode}
@@ -162,21 +173,26 @@ export const generateAndSaveProject = async (
   droppedElements,
   globalStyles,
   jsCode,
-  onProgress
+  onProgress,
 ) => {
   try {
     // 1. Generar HTML y CSS
     const bodyContent = generateHTML(droppedElements);
     const cssContent = generateCSS(globalStyles);
-    const fullHtml = generateFullHTML(bodyContent, cssContent, pageName, jsCode);
-    
+    const fullHtml = generateFullHTML(
+      bodyContent,
+      cssContent,
+      pageName,
+      jsCode,
+    );
+
     // 2. Guardar en S3
     const key = `users/${userId}/projects/${projectId}/pages/${pageName}.html`;
     const blob = new Blob([fullHtml], { type: "text/html" });
     const file = new File([blob], `${pageName}.html`, { type: "text/html" });
-    
+
     const url = await uploadGeneratedFileToS3(file, key, onProgress);
-    
+
     console.log("✅ Archivo HTML generado y subido:", url);
     return { url, key };
   } catch (error) {
