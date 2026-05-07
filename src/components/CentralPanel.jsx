@@ -23,7 +23,14 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
-import {Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle} from "./ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
 import { ref, set, get } from "firebase/database";
 import { QRCodeCanvas } from "qrcode.react";
 import { db } from "../firebase";
@@ -40,7 +47,7 @@ const CentralPanel = ({
   setDeviceShow,
   urlqr,
   isReadOnly,
-  canEdit
+  canEdit,
 }) => {
   const [color, setColor] = useState("dfdfdf");
   const [backgroundColor, setBackgroundColor] = useState("#dfdfdf");
@@ -389,7 +396,11 @@ const CentralPanel = ({
 
   return (
     <div
-      className={canEdit ? "w-full h-screen max-h-screen min-h-screen overflow-hidden col-span-2 relative flex items-center justify-center" : "w-full h-screen max-h-screen min-h-screen overflow-hidden col-span-4 relative flex items-center justify-center"}
+      className={
+        canEdit
+          ? "w-full h-screen max-h-screen min-h-screen overflow-hidden col-span-2 relative flex items-center justify-center"
+          : "w-full h-screen max-h-screen min-h-screen overflow-hidden col-span-4 relative flex items-center justify-center"
+      }
       style={{ backgroundColor: backgroundColor }}
       onMouseMove={handleMouseMove}
       onTouchMove={handleMove}
@@ -562,7 +573,7 @@ const CentralPanel = ({
               <DropdownMenuItem onClick={() => setQrCode(true)}>
                 Abrir link dev
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDeviceShow(prev => !prev)}>
+              <DropdownMenuItem onClick={() => setDeviceShow((prev) => !prev)}>
                 Abrir emulador
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handlePaste}>Pegar</DropdownMenuItem>

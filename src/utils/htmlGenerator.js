@@ -16,6 +16,7 @@ const styleDictToString = (styles) => {
 };
 
 // Renderiza un solo elemento a HTML
+// Renderiza un solo elemento a HTML
 const renderElement = (element) => {
   if (!element || typeof element !== "object") return "";
 
@@ -77,15 +78,28 @@ const renderElement = (element) => {
   const selfClosingTags = ["input", "img", "br", "hr", "meta", "link"];
   const isSelfClosing = selfClosingTags.includes(tag);
 
-  // Renderizar hijos recursivamente
+  // Renderizar hijos recursivamente (SIEMPRE hacer esto primero)
   const childrenHtml = children.map(renderElement).join("");
+
+  // 🔥 CORRECCIÓN: Determinar el contenido
+  // Si hay hijos, usarlos. Si no, usar texto (solo si no es solo espacios)
+  let content = "";
+  if (childrenHtml && childrenHtml.trim() !== "") {
+    // Si hay hijos reales, usarlos
+    content = childrenHtml;
+  } else if (text && text.trim() !== "") {
+    // Si hay texto no vacío (excluyendo solo espacios), usarlo
+    content = text;
+  } else {
+    // Si no hay nada, string vacío
+    content = "";
+  }
 
   if (isSelfClosing) {
     return `<${tag} ${attributes.id} ${attributes.class} ${styleAttr} ${attributes.placeholder} ${attributes.type} ${attributes.value} ${attributes.href} ${attributes.src} ${attributes["data-aos"]} ${attributes["data-aos-duration"]} ${attributes["data-aos-delay"]} />`;
   }
 
   // Para elementos con apertura y cierre
-  const content = text || childrenHtml || "";
   return `<${tag} ${attributes.id} ${attributes.class} ${styleAttr} ${attributes.href} ${attributes.src} ${attributes["data-aos"]}
   ${attributes["data-aos-duration"]}
   ${attributes["data-aos-delay"]}>${content}</${tag}>`;
