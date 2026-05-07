@@ -10,6 +10,7 @@ import { MdOutlineStyle } from "react-icons/md";
 import { useNavigate } from "react-router-dom";
 import useStore from "../store/store";
 import { TbBlocks } from "react-icons/tb";
+import { SiConvertio } from "react-icons/si";
 
 const SidebarB = () => {
   const { setMode } = useStore();
@@ -53,6 +54,12 @@ const SidebarB = () => {
           onClick={() => setMode("GStyles")}
         >
           <MdOutlineStyle className="text-2xl text-[#FFD966]" />
+        </div>
+        <div
+          className="w-full py-4 cursor-pointer hover:bg-[rgba(255,255,255,0.3)] flex items-center justify-center"
+          onClick={() => setMode("convertio")}
+        >
+          <SiConvertio className="text-2xl text-[#FFD966]" />
         </div>
 
         {projectData?.language === "waskart" ? (

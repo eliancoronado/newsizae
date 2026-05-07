@@ -18,6 +18,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { generateAndSaveProject } from "../utils/htmlGenerator";
 import DeviceWindow from "./DeviceWindow";
 import { addProjectHistory } from "../utils/projectsService";
+import ChatGPT from "./Creador";
 
 const CustomCodeEditor = React.lazy(() => import("./CodeEditor"));
 
@@ -472,7 +473,10 @@ const AppB = () => {
             setGs={setGs}
           />
         </div>
-      ) : mode === "code" ? (
+      ) : mode === "convertio" ? (
+       <ChatGPT />
+      ) :
+      mode === "code" ? (
         <Suspense
           fallback={<div className="text-black p-4">Cargando editor...</div>}
         >

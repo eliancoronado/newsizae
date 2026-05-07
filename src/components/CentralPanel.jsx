@@ -587,7 +587,7 @@ const CentralPanel = ({
                       <Textarea
                         id="import-code"
                         value={importCode}
-                        className="col-span-3"
+                        className="col-span-3 max-h-[200px] text-black w-full p-2 border border-gray-300 rounded-md font-mono"
                         placeholder="Ingresa el código Obj"
                         onChange={(e) => setImportCode(e.target.value)}
                       />
