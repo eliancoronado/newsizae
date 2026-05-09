@@ -1348,7 +1348,7 @@ export default function ProfilePage() {
                   <button
                     type="button"
                     className="mt-4 w-full px-4 py-2 bg-gradient-to-r from-gray-700 to-gray-800 text-white rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-300 flex items-center justify-center gap-2"
-                    onClick={() => {
+                    onClick={async () => {
                                             const user = JSON.parse(
                         localStorage.getItem("user") || "{}",
                       );
