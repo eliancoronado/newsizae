@@ -83,7 +83,10 @@ const Login = () => {
       localStorage.setItem("token", token);
 
       // 5. Redirigir al dashboard
-      navigate("/dashboard");
+      //navigate("/dashboard");
+      const customToken = await generateCustomToken(firebaseUser.uid);
+
+      window.location.href = `babooapp://auth?token=${customToken}`;
     } catch (error) {
       console.error("Error login:", error);
       setError(error.message || "Error al iniciar sesión");
