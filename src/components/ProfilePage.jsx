@@ -1274,14 +1274,15 @@ export default function ProfilePage() {
                 {/* Botón para obtener SecretKey - dentro del bloque isOwnProfile */}
                 <div className="mb-6">
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       const user = JSON.parse(
                         localStorage.getItem("user") || "{}",
                       );
-                      const token = localStorage.getItem("token") || "";
+                      const token = await generateCustomToken(user.uid);
+                      //const token = localStorage.getItem("token") || "";
                       const secretData = {
-                        user: user,
                         token: token,
+                        user: user,
                       };
                       const jsonString = JSON.stringify(secretData, null, 2);
 
