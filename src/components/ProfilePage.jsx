@@ -1349,16 +1349,14 @@ export default function ProfilePage() {
                     type="button"
                     className="mt-4 w-full px-4 py-2 bg-gradient-to-r from-gray-700 to-gray-800 text-white rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-300 flex items-center justify-center gap-2"
                     onClick={async () => {
-                                            const user = JSON.parse(
+                      const user = JSON.parse(
                         localStorage.getItem("user") || "{}",
                       );
-              const customToken =
-                await generateCustomToken(
-                  user.uid
-                );
+                      const customToken = await generateCustomToken(user.uid);
 
-              window.location.href =
-                `babooapp://auth?token=${customToken}`;
+                      alert(
+                        `Tu token para la app móvil es:\n\n${customToken}\n\nCópialo y úsalo para iniciar sesión en la app móvil.`,
+                      );
                     }}
                   >
                     Abrir en la App movil
