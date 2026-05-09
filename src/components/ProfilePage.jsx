@@ -45,6 +45,7 @@ import {
   updateUserPhotoInPosts,
   updateUserNameInChats,
 } from "../firebaseService";
+import { generateCustomToken } from "../utils/generateCustomToken";
 
 // Definición de rangos
 const roleInfo = {
@@ -1343,6 +1344,24 @@ export default function ProfilePage() {
                       />
                     </svg>
                     Obtener SecretKey
+                  </button>
+                  <button
+                    type="button"
+                    className="mt-4 w-full px-4 py-2 bg-gradient-to-r from-gray-700 to-gray-800 text-white rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-300 flex items-center justify-center gap-2"
+                    onClick={() => {
+                                            const user = JSON.parse(
+                        localStorage.getItem("user") || "{}",
+                      );
+              const customToken =
+                await generateCustomToken(
+                  user.uid
+                );
+
+              window.location.href =
+                `babooapp://auth?token=${customToken}`;
+                    }}
+                  >
+                    Abrir en la App movil
                   </button>
                 </div>
               </div>
