@@ -19,6 +19,7 @@ import { onAuthStateChanged, signInWithCustomToken } from "firebase/auth";
 import { generateAndSaveProject } from "../utils/htmlGenerator";
 import DeviceWindow from "./DeviceWindow";
 import { addProjectHistory } from "../utils/projectsService";
+import { generateCustomToken } from "../utils/generateCustomToken";
 import ChatGPT from "./Creador";
 
 const CustomCodeEditor = React.lazy(() => import("./CodeEditor"));
@@ -27,8 +28,8 @@ const AppBB = () => {
   const [loading, setLoading] = useState(false);
   const { id } = useParams();
   const [searchParams] = useSearchParams();
-  const tokenFromUrl = searchParams.get('token');
-  const uidFromUrl = searchParams.get('uid');
+  const tokenFromUrl = searchParams.get("token");
+  const uidFromUrl = searchParams.get("uid");
 
   const {
     handleStyleChange,
@@ -76,16 +77,25 @@ const AppBB = () => {
   const navigate = useNavigate();
 
   // Nueva función para autenticar con token de URL
-  const authenticateWithToken = async () => {
-    if (!tokenFromUrl) return false;
-    
+  // Nueva función para autenticar con uid de URL
+  const authenticateWithUid = async (uid) => {
+    if (!uid) return false;
+
     try {
-      console.log("🔐 Autenticando con token de URL...");
-      await signInWithCustomToken(auth, tokenFromUrl);
-      console.log("✅ Autenticación exitosa con token");
+      console.log("🔐 Generando Custom Token para uid:", uid);
+      const customToken = await generateCustomToken(uid);
+
+      if (!customToken) {
+        console.error("❌ No se pudo generar el token");
+        return false;
+      }
+
+      console.log("✅ Token generado, autenticando...");
+      await signInWithCustomToken(auth, customToken);
+      console.log("✅ Autenticación exitosa con token generado");
       return true;
     } catch (error) {
-      console.error("❌ Error autenticando con token:", error);
+      console.error("❌ Error autenticando:", error);
       return false;
     }
   };
@@ -93,7 +103,19 @@ const AppBB = () => {
   // Verificar autenticación al cargar (modificada)
   useEffect(() => {
     const initAuth = async () => {
-      // 1. Si hay token en URL, usarlo primero
+      // 1. Si hay uid en URL, generar token y autenticar
+      if (uidFromUrl) {
+        console.log("🔄 Autenticando con uid de URL:", uidFromUrl);
+        const authSuccess = await authenticateWithUid(uidFromUrl);
+        if (authSuccess) {
+          setIsAuthenticated(true);
+          setAuthInitialized(true);
+          toast.success("Sesión iniciada correctamente");
+          return;
+        }
+      }
+
+      // 2. Si hay token en URL, usarlo directamente
       if (tokenFromUrl) {
         const authSuccess = await authenticateWithToken();
         if (authSuccess) {
@@ -103,33 +125,31 @@ const AppBB = () => {
           return;
         }
       }
-      
-      // 2. Si no hay token o falló, esperar autenticación normal
+
+      // 3. Fallback a autenticación normal
       const unsubscribe = onAuthStateChanged(auth, (user) => {
         if (user) {
-          console.log("✅ Usuario autenticado:", user.uid);
+          console.log("✅ Usuario autenticado por Firebase:", user.uid);
           setIsAuthenticated(true);
         } else {
           console.log("❌ No hay usuario autenticado");
-          // Si hay uid en URL pero no autenticación, crear sesión temporal
           if (uidFromUrl) {
+            // Último intento: sesión temporal
             console.log("🔄 Creando sesión temporal para uid:", uidFromUrl);
-            // Crear usuario simulado en localStorage para permitir acceso
-            localStorage.setItem('tempUid', uidFromUrl);
-            localStorage.setItem('tempSession', 'true');
+            localStorage.setItem("tempUid", uidFromUrl);
+            localStorage.setItem("tempSession", "true");
             setIsAuthenticated(true);
           } else {
             navigate("/");
-            setIsAuthenticated(false);
             toast.error("Debes iniciar sesión para acceder a este proyecto");
           }
         }
         setAuthInitialized(true);
       });
-      
+
       return () => unsubscribe();
     };
-    
+
     initAuth();
   }, [tokenFromUrl, uidFromUrl]);
 
@@ -138,7 +158,7 @@ const AppBB = () => {
     const user = auth.currentUser;
     if (user) return user.uid;
     if (uidFromUrl) return uidFromUrl;
-    return localStorage.getItem('tempUid');
+    return localStorage.getItem("tempUid");
   };
 
   // Agregar un listener para activar pantalla completa con el primer clic
@@ -346,9 +366,8 @@ const AppBB = () => {
           />
         </div>
       ) : mode === "convertio" ? (
-       <ChatGPT />
-      ) :
-      mode === "code" ? (
+        <ChatGPT />
+      ) : mode === "code" ? (
         <Suspense
           fallback={<div className="text-black p-4">Cargando editor...</div>}
         >
