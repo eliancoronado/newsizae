@@ -324,7 +324,181 @@ const AppBB = () => {
     }
   }, [selectedPage, id, isAuthenticated, projectAuthorId]);
 
-  // ... resto del código (handleUpdateProject, handlePreview, etc.) se mantiene igual ...
+  // Función para remover estilos globales recursivamente (para preview)
+  const removeGlobalStylesRecursively = (elements, globalStyles) => {
+    if (!elements || !Array.isArray(elements)) return [];
+
+    return elements.map((element) => {
+      const newElement = { ...element };
+
+      if (newElement.iconClass) {
+        const globalStyle = globalStyles.find(
+          (style) => style.name === newElement.iconClass,
+        );
+
+        if (globalStyle && globalStyle.styles) {
+          const updatedStyles = { ...newElement.styles };
+          Object.keys(globalStyle.styles).forEach((key) => {
+            if (updatedStyles[key] === globalStyle.styles[key]) {
+              delete updatedStyles[key];
+            }
+          });
+          newElement.styles = updatedStyles;
+        }
+      }
+
+      if (newElement.children && newElement.children.length > 0) {
+        newElement.children = removeGlobalStylesRecursively(
+          newElement.children,
+          globalStyles,
+        );
+      }
+
+      return newElement;
+    });
+  };
+
+  // ========== Guardar proyecto en Firebase ==========
+  const handleUpdateProject = async () => {
+    if (!id) return;
+
+    // Usar userRole del estado, no de projectData
+    if (userRole === "reader") {
+      toast.error(
+        "No tienes permiso para guardar cambios en este proyecto (solo lectura)",
+      );
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        toast.error("Debes iniciar sesión para guardar");
+        setLoading(false);
+        return;
+      }
+
+      // Construir objeto actualizado del proyecto
+      let updatedProject = { ...projectData };
+      if (!updatedProject.pages) updatedProject.pages = [];
+
+      const sanitizeElements = (elements) => {
+        if (!elements || !Array.isArray(elements)) return [];
+        return elements.map((el) => ({
+          ...el,
+          children:
+            el.children && Array.isArray(el.children)
+              ? sanitizeElements(el.children)
+              : [],
+        }));
+      };
+
+      const pageIndex = updatedProject.pages.findIndex(
+        (p) => p.name === selectedPage,
+      );
+      const currentPageData = {
+        name: selectedPage,
+        elements: sanitizeElements(droppedElements),
+        code: blocklyCode,
+        state: workspaceState || {},
+        stylesGlobal: gs,
+      };
+
+      if (pageIndex !== -1) {
+        updatedProject.pages[pageIndex] = currentPageData;
+      } else {
+        updatedProject.pages.push(currentPageData);
+      }
+
+      updatedProject.updatedAt = Date.now();
+      updatedProject.authorId = updatedProject.authorId || currentUser.uid;
+
+      const projectRef = ref(db, `projects/${id}`);
+      await set(projectRef, updatedProject);
+
+      if (updatedProject.authorId === currentUser.uid) {
+        const userProjectRef = ref(db, `userProjects/${currentUser.uid}/${id}`);
+        await set(userProjectRef, true);
+      }
+
+      // Registrar el cambio en el historial SOLO si el usuario NO es el autor original
+      if (updatedProject.authorId !== currentUser.uid) {
+        await addProjectHistory(
+          id,
+          currentUser.uid,
+          currentUser.displayName || "Usuario",
+          `Guardó cambios en el proyecto "${updatedProject.name}"`,
+          updatedProject.name,
+        );
+      }
+
+      setProjectData(updatedProject);
+      toast.success("Proyecto guardado correctamente");
+    } catch (error) {
+      console.error("Error al guardar el proyecto:", error);
+      toast.error("Error al guardar el proyecto");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePreview = async () => {
+    if (!selectedPage) {
+      toast.error("Selecciona una página para previsualizar");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("No autenticado");
+
+      const copyDroppedElements = JSON.parse(JSON.stringify(droppedElements));
+      const cleanedElements = removeGlobalStylesRecursively(
+        copyDroppedElements,
+        gs,
+      );
+
+      const ownerId = projectAuthorId;
+
+      const result = await generateAndSaveProject(
+        ownerId,
+        id,
+        selectedPage,
+        cleanedElements,
+        gs,
+        blocklyCode || "",
+        (progress) => {
+          console.log(`📤 Generando HTML: ${progress}%`);
+        },
+      );
+
+      setPreviewUrl(result.url);
+      toast.success("Vista previa generada correctamente");
+    } catch (error) {
+      console.error("Error en preview:", error);
+      toast.error("Error al generar la vista previa");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePreviewAndUpdate = async () => {
+    try {
+      await handleUpdateProject();
+      await handlePreview();
+    } catch (error) {
+      console.error("Error durante el proceso:", error);
+      toast.error("Error al guardar el proyecto");
+    }
+  };
+
+  const handleGenerateCode = (code, state) => {
+    setBlockyCode(code);
+    setWorkspaceState(state);
+  };
 
   // Determinar si el usuario puede editar (owner o editor)
   const canEdit = userRole === "owner" || userRole === "editor";
