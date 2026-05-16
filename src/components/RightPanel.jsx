@@ -364,9 +364,7 @@ const RightPanel = ({
   return (
     <div className="w-full h-full col-span-1 bg-[#2B2B44] p-1.5 lg:p-4 no-scroll overflow-y-auto scrollbar-hide">
       <h2 className="text-[#F5F5F5] text-xl font-medium">Propiedades</h2>
-      <h3 className="text-[#BDBDBD] text-lg font-medium mt-4">
-        Id: {selectedElement.id}
-      </h3>
+      <input className="text-[#BDBDBD] text-lg font-medium mt-4 px-1 w-full" type="text" value={`Id: ${selectedElement.id}`} readOnly />
       <div className="w-full h-auto flex flex-col gap-3 mt-5">
         <h3 className="text-[#F5F5F5] text-base font-medium">Página</h3>
         <select

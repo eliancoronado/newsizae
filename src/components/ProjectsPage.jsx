@@ -26,6 +26,11 @@ import { shareProject, getProjectHistory } from "../utils/projectsService";
 
 const languageInfo = {
   waskart: { name: "Waskart", icon: "⚡", color: "from-blue-500 to-blue-600" },
+  javascript: {
+    name: "JavaScript",
+    icon: "🟨",
+    color: "from-yellow-400 to-yellow-500",
+  },
   bloques: {
     name: "Quí-roz",
     icon: "🧩",
@@ -836,6 +841,43 @@ export default function ProjectsPage({ currentUser }) {
                     </div>
                     {selectedLanguage === "waskart" && (
                       <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center shadow-lg animate-pulse">
+                        <svg
+                          className="w-3 h-3 text-white"
+                          fill="currentColor"
+                          viewBox="0 0 20 20"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* JavaScript */}
+                  <div
+                    onClick={() => setSelectedLanguage("javascript")}
+                    className={`group relative flex items-center gap-4 p-4 rounded-xl cursor-pointer transition-all duration-300 ${
+                      selectedLanguage === "javascript"
+                        ? "bg-gradient-to-r from-yellow-400/20 to-yellow-500/20 border-2 border-yellow-500 shadow-lg shadow-yellow-500/20"
+                        : "bg-gray-700/30 border-2 border-gray-600 hover:border-yellow-400 hover:bg-gray-700/50"
+                    }`}
+                  >
+                    <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-yellow-400 to-yellow-500 flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform duration-300">
+                      <span className="text-3xl">🟨</span>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-white font-semibold text-lg">
+                        JavaScript
+                      </h3>
+                      <p className="text-gray-400 text-sm">
+                        Programación web profesional con JavaScript moderno
+                      </p>
+                    </div>
+                    {selectedLanguage === "javascript" && (
+                      <div className="w-6 h-6 rounded-full bg-yellow-500 flex items-center justify-center shadow-lg animate-pulse">
                         <svg
                           className="w-3 h-3 text-white"
                           fill="currentColor"

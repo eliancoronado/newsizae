@@ -21,6 +21,7 @@ import DeviceWindow from "./DeviceWindow";
 import { addProjectHistory } from "../utils/projectsService";
 import { generateCustomToken } from "../utils/generateCustomToken";
 import ChatGPT from "./Creador";
+import CustomCodeEditorr from "./JSEditor";
 
 const CustomCodeEditor = React.lazy(() => import("./CodeEditor"));
 
@@ -524,6 +525,16 @@ const AppBB = () => {
 
       {mode === "codeb" ? (
         <BlocklyComponent onGenerateCode={handleGenerateCode} />
+      ) : mode === "codeJS" ? (
+        <Suspense
+          fallback={<div className="text-black p-4">Cargando editor...</div>}
+        >
+          <CustomCodeEditorr
+            onChange={() => {}}
+            language="javascript"
+            onSave={handleGenerateCode}
+          />
+        </Suspense>
       ) : mode === "GStyles" ? (
         <div className="w-full h-full grid grid-cols-4 text-black">
           <GSPanel

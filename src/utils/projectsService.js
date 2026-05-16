@@ -174,7 +174,7 @@ export const createProject = async (userId, language, userName) => {
     const projectData = {
       authorId: userId,
       authorName: userName,
-      name: `Proyecto ${language === "waskart" ? "Waskart" : "Quí-roz"}`,
+      name: `Proyecto ${language === "waskart" ? "Waskart" : language === "javascript" ? "JavaScript" : "Quí-roz"}`,
       language: language,
       createdAt: Date.now(),
       updatedAt: Date.now(),

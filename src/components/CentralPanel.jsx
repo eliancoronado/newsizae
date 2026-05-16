@@ -10,6 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
+import { useForm, ValidationError } from "@formspree/react";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +38,7 @@ import { db } from "../firebase";
 import { auth } from "../firebase";
 import { toast } from "sonner";
 import { FaArrowLeft, FaArrowRight } from "react-icons/fa6";
+import { uploadToS3 } from "../utils/uploadToS3SDK"; // Ajusta la ruta según donde tengas el archivo
 
 const CentralPanel = ({
   onUpdate,
@@ -82,6 +84,16 @@ const CentralPanel = ({
     gs,
     setGs,
   } = useStore();
+  // Agregar después de los otros useState
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportConfig, setExportConfig] = useState({
+    logo: null, // Guardar el archivo temporalmente
+    logoUrl: "", // Guardar la URL de S3
+    appName: "",
+    htmlUrl: "",
+  });
+  const [isUploading, setIsUploading] = useState(false);
+  const [exportFormState, handleExportSubmit] = useForm("xgvrvarw"); // Reemplaza con tu ID de Formspree
 
   // Color de fondo
   useEffect(() => {
@@ -114,6 +126,32 @@ const CentralPanel = ({
       console.error("Error guardando proyecto:", error);
       toast.error("Error al guardar el proyecto");
       return false;
+    }
+  };
+
+  // Agregar después de handlePaste o donde prefieras
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !file.type.startsWith("image/")) return;
+
+    // Vista previa local
+    const previewUrl = URL.createObjectURL(file);
+    setExportConfig((prev) => ({ ...prev, logo: previewUrl, logoUrl: "" }));
+
+    // Subir a S3
+    setIsUploading(true);
+    toast.loading("Subiendo logo...", { id: "logo-upload" });
+
+    try {
+      const s3Url = await uploadToS3(file);
+      setExportConfig((prev) => ({ ...prev, logoUrl: s3Url }));
+      toast.success("Logo subido exitosamente", { id: "logo-upload" });
+    } catch (error) {
+      console.error("Error al subir logo:", error);
+      toast.error("Error al subir el logo", { id: "logo-upload" });
+      setExportConfig((prev) => ({ ...prev, logo: null, logoUrl: "" }));
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -625,6 +663,9 @@ const CentralPanel = ({
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
+              <DropdownMenuItem onClick={() => setIsExportModalOpen(true)}>
+                Exportar / Solicitar Apk
+              </DropdownMenuItem>
             </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -697,6 +738,192 @@ const CentralPanel = ({
           >
             Borrar
           </button>
+        </div>
+      )}
+
+      {/* Modal de Exportación / Solicitud */}
+      {isExportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg p-6 shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-semibold mb-4 text-gray-800">
+              Solicitar publicación de la aplicación
+            </h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Completa los siguientes datos para solicitar la publicación de tu
+              aplicación. Recibirás un correo cuando tu solicitud comience a ser
+              procesada.
+            </p>
+
+            <form onSubmit={handleExportSubmit} className="space-y-4">
+              {/* Logo */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Logo de la aplicación
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  disabled={isUploading}
+                  className="w-full text-sm text-gray-500 file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
+                />
+                {isUploading && (
+                  <p className="text-xs text-blue-500 mt-1">
+                    Subiendo logo a la nube...
+                  </p>
+                )}
+                {exportConfig.logo && !isUploading && (
+                  <div className="mt-2">
+                    <img
+                      src={exportConfig.logo}
+                      alt="Preview"
+                      className="h-12 w-12 object-contain"
+                    />
+                    {exportConfig.logoUrl && (
+                      <p className="text-xs text-green-500 mt-1">
+                        ✓ Logo subido correctamente
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Nombre de la App */}
+              <div>
+                <label
+                  htmlFor="appName"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Nombre de la aplicación *
+                </label>
+                <input
+                  id="appName"
+                  type="text"
+                  name="appName"
+                  required
+                  value={exportConfig.appName}
+                  onChange={(e) =>
+                    setExportConfig((prev) => ({
+                      ...prev,
+                      appName: e.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                  placeholder="Ej: MiApp increíble"
+                />
+              </div>
+
+              {/* URL del HTML */}
+              <div>
+                <label
+                  htmlFor="htmlUrl"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  URL del archivo HTML (Link Dev) *
+                </label>
+                <input
+                  id="htmlUrl"
+                  type="url"
+                  name="htmlUrl"
+                  required
+                  value={exportConfig.htmlUrl}
+                  onChange={(e) =>
+                    setExportConfig((prev) => ({
+                      ...prev,
+                      htmlUrl: e.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                  placeholder="https://tu-link-dev.com/proyecto"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  El link que usas para previsualizar tu aplicación
+                </p>
+              </div>
+
+              {/* Campo oculto con la URL del logo y otros datos */}
+              <input
+                type="hidden"
+                name="logoUrl"
+                value={exportConfig.logoUrl}
+              />
+              <input
+                type="hidden"
+                name="appName"
+                value={exportConfig.appName}
+              />
+              <input
+                type="hidden"
+                name="htmlUrl"
+                value={exportConfig.htmlUrl}
+              />
+              <input type="hidden" name="projectId" value={id} />
+              <input
+                type="hidden"
+                name="projectName"
+                value={project?.name || "Sin nombre"}
+              />
+              <input
+                type="hidden"
+                name="requestDate"
+                value={new Date().toISOString()}
+              />
+              <input
+                type="hidden"
+                name="userEmail"
+                value={auth.currentUser?.email || "No autenticado"}
+              />
+
+              {/* Mensaje de éxito */}
+              {exportFormState.succeeded && (
+                <div className="bg-green-50 border border-green-200 rounded-md p-3">
+                  <p className="text-green-700 text-sm">
+                    ¡Solicitud enviada con éxito! Recibirás un correo de
+                    confirmación cuando comience el proceso de publicación
+                    (máximo 3 días hábiles).
+                  </p>
+                </div>
+              )}
+
+              {/* Botones */}
+              <DialogFooter className="flex gap-2 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsExportModalOpen(false);
+                    setExportConfig({
+                      logo: null,
+                      logoUrl: "",
+                      appName: "",
+                      htmlUrl: "",
+                    });
+                    if (exportConfig.logo)
+                      URL.revokeObjectURL(exportConfig.logo);
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={
+                    exportFormState.submitting ||
+                    isUploading ||
+                    !exportConfig.logoUrl
+                  }
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {exportFormState.submitting
+                    ? "Enviando..."
+                    : "Enviar solicitud"}
+                </Button>
+              </DialogFooter>
+
+              <p className="text-xs text-gray-400 text-center mt-4">
+                Tu solicitud será procesada en un plazo máximo de 3 días hábiles
+              </p>
+            </form>
+          </div>
         </div>
       )}
 

@@ -10,7 +10,7 @@ import { MdOutlineStyle } from "react-icons/md";
 import { useNavigate } from "react-router-dom";
 import useStore from "../store/store";
 import { TbBlocks } from "react-icons/tb";
-import { SiConvertio } from "react-icons/si";
+import { SiConvertio, SiJavascript } from "react-icons/si";
 
 const SidebarB = () => {
   const { setMode } = useStore();
@@ -62,7 +62,15 @@ const SidebarB = () => {
           <SiConvertio className="text-2xl text-[#FFD966]" />
         </div>
 
-        {projectData?.language === "waskart" ? (
+        {/* 🔄 CAMBIO AQUÍ: Verificar primero si es JavaScript */}
+        {projectData?.language === "javascript" ? (
+          <div
+            className="w-full py-4 cursor-pointer hover:bg-[rgba(255,255,255,0.3)] flex items-center justify-center"
+            onClick={() => setMode("codeJS")}
+          >
+            <SiJavascript className="text-2xl text-[#FFD966]" />
+          </div>
+        ) : projectData?.language === "waskart" ? (
           <div
             className="w-full py-4 cursor-pointer hover:bg-[rgba(255,255,255,0.3)] flex items-center justify-center"
             onClick={() => setMode("code")}

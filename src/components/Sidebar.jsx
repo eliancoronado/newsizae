@@ -1,8 +1,9 @@
 import React from "react";
-import { BiMessageDetail } from "react-icons/bi";
+import { BiMessageDetail, BiSolidVideos } from "react-icons/bi";
 import { FaDiagramProject } from "react-icons/fa6";
 import { GoHomeFill } from "react-icons/go";
 import { IoSettingsSharp } from "react-icons/io5";
+import { MdBusiness } from "react-icons/md";
 import { RiUserCommunityFill } from "react-icons/ri";
 
 const Sidebar = ({ activeTab, setActiveTab, onLogout }) => {
@@ -16,6 +17,13 @@ const Sidebar = ({ activeTab, setActiveTab, onLogout }) => {
         >
             <GoHomeFill className="text-2xl"/>
             Inicio
+        </div>
+        <div 
+          className={`flex items-center gap-3 px-4 py-3  hover:text-primary hover:bg-[#393939]/60 hover:backdrop-blur-md transition-all rounded-xl cursor-pointer text-lg ${activeTab === "reels" ? "text-[#00E5FF] bg-[#393939]/60" : "text-gray-400"}`}
+          onClick={() => setActiveTab("reels")}
+        >
+            <BiSolidVideos className="text-2xl"/>
+            Reels
         </div>
         <div 
           className={`flex items-center gap-3 px-4 py-3 hover:text-primary hover:bg-[#393939]/60 hover:backdrop-blur-md transition-all rounded-xl cursor-pointer text-lg ${activeTab === "projects" ? "text-[#00E5FF] bg-[#393939]/60" : "text-gray-400"}`}
@@ -39,8 +47,8 @@ const Sidebar = ({ activeTab, setActiveTab, onLogout }) => {
         <div className={`flex items-center gap-3 px-4 py-3 hover:text-primary hover:bg-[#393939]/60 hover:backdrop-blur-md transition-all rounded-xl cursor-pointer text-lg ${activeTab === "settings" ? "text-[#00E5FF] bg-[#393939]/60" : "text-gray-400"}`}
           onClick={() => setActiveTab("settings")}
         >
-            <IoSettingsSharp className="text-2xl"/>
-            Configuración
+            <MdBusiness className="text-2xl"/>
+            Plan
         </div>
       </div>
     </div>

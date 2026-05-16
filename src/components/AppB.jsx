@@ -19,6 +19,7 @@ import { generateAndSaveProject } from "../utils/htmlGenerator";
 import DeviceWindow from "./DeviceWindow";
 import { addProjectHistory } from "../utils/projectsService";
 import ChatGPT from "./Creador";
+import CustomCodeEditorr from "./JSEditor";
 
 const CustomCodeEditor = React.lazy(() => import("./CodeEditor"));
 
@@ -66,7 +67,7 @@ const AppB = () => {
   const [deviceShow, setDeviceShow] = useState(false);
   const [previewUrl, setPreviewUrl] = useState("");
   const [userRole, setUserRole] = useState(null); // Estado para el rol
-    const [projectAuthorId, setProjectAuthorId] = useState(null); // Guardar el authorId del proyecto
+  const [projectAuthorId, setProjectAuthorId] = useState(null); // Guardar el authorId del proyecto
 
   const navigate = useNavigate();
 
@@ -198,7 +199,7 @@ const AppB = () => {
 
         // Generar URL de preview para la página actual
         const currentPageName = selectedPage || "index";
-         const ownerId = project.authorId; // El dueño original del proyecto
+        const ownerId = project.authorId; // El dueño original del proyecto
         const previewKey = `users/${ownerId}/projects/${id}/pages/${currentPageName}.html`;
         const previewUrlGenerated = `https://mis-proyectos-sizae-app.s3.amazonaws.com/${previewKey}`;
         setPreviewUrl(previewUrlGenerated);
@@ -431,6 +432,7 @@ const AppB = () => {
   };
 
   const handleGenerateCode = (code, state) => {
+    console.log("Código generado desde Blockly/JSEditor:", code);
     setBlockyCode(code);
     setWorkspaceState(state);
   };
@@ -458,6 +460,16 @@ const AppB = () => {
 
       {mode === "codeb" ? (
         <BlocklyComponent onGenerateCode={handleGenerateCode} />
+      ) : mode === "codeJS" ? (
+        <Suspense
+          fallback={<div className="text-black p-4">Cargando editor...</div>}
+        >
+          <CustomCodeEditorr
+            onChange={() => {}}
+            language="javascript"
+            onSave={handleGenerateCode}
+          />
+        </Suspense>
       ) : mode === "GStyles" ? (
         <div className="w-full h-full grid grid-cols-4 text-black">
           <GSPanel
@@ -474,9 +486,8 @@ const AppB = () => {
           />
         </div>
       ) : mode === "convertio" ? (
-       <ChatGPT />
-      ) :
-      mode === "code" ? (
+        <ChatGPT />
+      ) : mode === "code" ? (
         <Suspense
           fallback={<div className="text-black p-4">Cargando editor...</div>}
         >
