@@ -285,7 +285,7 @@ export default function Dashboard() {
         setShowWelcomeModal(true);
       }
     }
-  }, [user]);
+  }, [user?.email]);
 
   // 🔥 Listener global para detectar mensajes entrantes y actualizar unreadCount
   useEffect(() => {
@@ -414,7 +414,7 @@ export default function Dashboard() {
           email: userData.email,
           picture: userData.picture,
           bio: userData.bio || "",
-          role: userData.role || "bronze",
+          role: userData.role || "",
           coverPhoto: null,
           projects: [],
         });
@@ -476,7 +476,7 @@ export default function Dashboard() {
           email: userData.email,
           picture: userData.picture,
           bio: userData.bio || "",
-          role: userData.role || "bronze",
+          role: userData.role || "",
           coverPhoto: null,
           projects: [],
         });
@@ -541,7 +541,7 @@ export default function Dashboard() {
               name: userData.name || "Usuario",
               photo: userData.picture || "",
               bio: "Hola, estoy usando esta increíble app",
-              role: "bronze",
+              role: "none",
               coverPhoto: null,
               projects: [],
               friends: {},
@@ -561,7 +561,7 @@ export default function Dashboard() {
               email: freshUserData.email,
               picture: freshUserData.photo,
               bio: freshUserData.bio || "",
-              role: freshUserData.role || "bronze",
+              role: freshUserData.role || "none",
               coverPhoto: freshUserData.coverPhoto || null,
               projects: freshUserData.projects || [],
             });
@@ -572,7 +572,7 @@ export default function Dashboard() {
               email: userData.email,
               picture: userData.picture,
               bio: "",
-              role: "bronze",
+              role: "none",
               coverPhoto: null,
               projects: [],
             });
@@ -585,7 +585,7 @@ export default function Dashboard() {
             email: userData.email,
             picture: userData.picture,
             bio: "",
-            role: "bronze",
+            role: "none",
             coverPhoto: null,
             projects: [],
           });
@@ -617,7 +617,7 @@ export default function Dashboard() {
           email: userData.email,
           picture: userData.photo,
           bio: userData.bio || "",
-          role: userData.role || "bronze",
+          role: userData.role || "none",
           coverPhoto: userData.coverPhoto || null,
           projects: userData.projects || [],
         });
@@ -1008,12 +1008,14 @@ export default function Dashboard() {
                       </span>
                     )}
                   </button>
-                  <button
-                    onClick={() => setActiveTab("projects")}
-                    className={`flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-xl transition-all relative border-2 border-white`}
-                  >
-                    <FaCodeBranch className="text-2xl text-white" />
-                  </button>
+                  {user?.role && user?.role === "free" || user?.role === "admin" ? (
+                    <button
+                      onClick={() => setActiveTab("projects")}
+                      className={`flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-xl transition-all relative border-2 border-white`}
+                    >
+                      <FaCodeBranch className="text-2xl text-white" />
+                    </button>
+                  ) : null}
                 </div>
               </div>
             </div>

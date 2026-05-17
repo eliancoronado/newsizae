@@ -3,6 +3,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import Cropper from "react-cropper";
 import "./cropper.css";
 import { useParams, useNavigate } from "react-router-dom";
+import { FaCrown, FaGem, FaStar, FaRocket } from "react-icons/fa";
 import axios from "axios";
 import {
   FaGlobe,
@@ -201,6 +202,265 @@ const ProfileInfoSkeleton = () => (
   </div>
 );
 
+// Planes de suscripción
+const SUBSCRIPTION_PLANS = {
+  free: {
+    id: "free",
+    name: "Gratuito",
+    icon: FaStar,
+    color: "from-gray-500 to-gray-600",
+    textColor: "text-gray-400",
+    features: [
+      "1 proyecto activo",
+      "50MB almacenamiento",
+      "Editor básico",
+      "Soporte por email",
+    ],
+  },
+  bronze: {
+    id: "bronze",
+    name: "Programador",
+    icon: FaRocket,
+    color: "from-amber-600 to-amber-700",
+    textColor: "text-amber-400",
+    features: [
+      "5 proyectos",
+      "1GB almacenamiento",
+      "Editor avanzado",
+      "Exportar código",
+      "2 colaboradores",
+    ],
+  },
+  silver: {
+    id: "silver",
+    name: "Plata",
+    icon: FaGem,
+    color: "from-gray-400 to-gray-500",
+    textColor: "text-gray-300",
+    features: [
+      "15 proyectos",
+      "5GB almacenamiento",
+      "Editor profesional",
+      "Historial versiones",
+      "5 colaboradores",
+    ],
+  },
+  gold: {
+    id: "gold",
+    name: "Oro",
+    icon: FaCrown,
+    color: "from-yellow-500 to-yellow-600",
+    textColor: "text-yellow-400",
+    features: [
+      "Proyectos ilimitados",
+      "20GB almacenamiento",
+      "Editor profesional+",
+      "IA avanzada",
+      "Colaboradores ilimitados",
+    ],
+  },
+};
+
+// Modal de selección de planes
+const PlanSelectionModal = ({
+  showPlanModal,
+  setShowPlanModal,
+  userSubscription,
+  activateFreePlan,
+}) => {
+  if (!showPlanModal) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md animate-fadeIn">
+      <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-gradient-to-br from-gray-800 to-gray-900 p-6 border-b border-gray-700">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-2xl font-bold text-white">
+                Selecciona tu plan
+              </h2>
+              <p className="text-gray-400 text-sm mt-1">
+                Elige el plan que mejor se adapte a tus necesidades
+              </p>
+            </div>
+            <button
+              onClick={() => setShowPlanModal(false)}
+              className="text-gray-400 hover:text-white text-2xl"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {Object.entries(SUBSCRIPTION_PLANS).map(([key, plan]) => {
+              const Icon = plan.icon;
+              const isCurrentPlan = userSubscription?.plan === key;
+
+              return (
+                <div
+                  key={key}
+                  className={`bg-gray-800/50 rounded-xl p-6 border-2 transition-all ${isCurrentPlan ? "border-green-500" : "border-gray-700 hover:border-purple-500"}`}
+                >
+                  <div
+                    className={`w-12 h-12 rounded-xl bg-gradient-to-br ${plan.color} flex items-center justify-center mx-auto mb-4`}
+                  >
+                    <Icon className="text-white text-2xl" />
+                  </div>
+                  <h3
+                    className={`text-xl font-bold text-center ${plan.textColor} mb-2`}
+                  >
+                    {plan.name}
+                  </h3>
+                  <div className="text-center mb-4">
+                    {key === "free" ? (
+                      <span className="text-2xl font-bold text-white">
+                        Gratis
+                      </span>
+                    ) : (
+                      <>
+                        <span className="text-2xl font-bold text-white">
+                          $
+                          {key === "bronze"
+                            ? "4.99"
+                            : key === "silver"
+                              ? "9.99"
+                              : "19.99"}
+                        </span>
+                        <span className="text-gray-400 text-sm">/mes</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="space-y-2 mb-6">
+                    {plan.features.map((feature, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-2 text-sm"
+                      >
+                        <span className="text-green-500">✓</span>
+                        <span className="text-gray-300">{feature}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {isCurrentPlan ? (
+                    <button
+                      disabled
+                      className="w-full py-2 bg-green-500/20 text-green-400 rounded-lg font-semibold cursor-default"
+                    >
+                      Plan Actual
+                    </button>
+                  ) : key === "free" ? (
+                    <button
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            "¿Activar plan gratuito? Esto generará una licencia única para ti.",
+                          )
+                        ) {
+                          activateFreePlan();
+                          setShowPlanModal(false);
+                        }
+                      }}
+                      className="w-full py-2 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-lg font-semibold hover:shadow-lg transition"
+                    >
+                      Activar plan gratuito
+                    </button>
+                  ) : (
+                    <button className="w-full py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-semibold hover:shadow-lg transition">
+                      Próximamente
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Sección de activación de licencia */}
+          <div className="mt-8 text-center">
+            <div className="bg-purple-500/10 rounded-xl p-6 border border-purple-500/20">
+              <h3 className="text-lg font-semibold text-white mb-2">
+                ¿Tienes una licencia?
+              </h3>
+              <p className="text-gray-400 text-sm mb-4">
+                Ingresa tu código de activación para desbloquear beneficios
+              </p>
+              <button
+                onClick={() => setShowKeyModal(true)}
+                className="px-6 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-semibold hover:shadow-lg transition"
+              >
+                Activar licencia
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Modal de activación de licencia
+const KeyActivationModal = ({
+  showKeyModal,
+  setShowKeyModal,
+  activationKey,
+  setActivationKey,
+  activateLicense,
+  activatingKey,
+}) => {
+  if (!showKeyModal) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md animate-fadeIn">
+      <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl w-full max-w-md mx-4">
+        <div className="p-6">
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <FaCrown className="text-white text-2xl" />
+            </div>
+            <h2 className="text-2xl font-bold text-white">Activar licencia</h2>
+            <p className="text-gray-400 text-sm">
+              Ingresa tu código de activación
+            </p>
+          </div>
+
+          <input
+            type="text"
+            value={activationKey}
+            onChange={(e) => setActivationKey(e.target.value.toUpperCase())}
+            placeholder="Ej: BRONZE-123456"
+            className="w-full px-4 py-3 bg-gray-700 border-2 border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 text-center uppercase"
+            autoFocus
+          />
+
+          <div className="flex gap-3 mt-6">
+            <button
+              onClick={() => {
+                setShowKeyModal(false);
+                setActivationKey("");
+              }}
+              className="flex-1 px-4 py-2 bg-gray-700 text-white rounded-xl hover:bg-gray-600 transition"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={activateLicense}
+              disabled={activatingKey || !activationKey.trim()}
+              className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-semibold hover:shadow-lg transition disabled:opacity-50"
+            >
+              {activatingKey ? (
+                <FaSpinner className="animate-spin mx-auto" />
+              ) : (
+                "Activar"
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const LoadingSpinner = ({ size = "small" }) => (
   <FaSpinner
     className={`animate-spin ${size === "small" ? "w-4 h-4" : "w-6 h-6"}`}
@@ -257,6 +517,15 @@ export default function ProfilePage() {
   const [nameText, setNameText] = useState("");
   // Flag para indicar que todos los datos están listos
   const [currentUser, setCurrentUser] = useState(null);
+
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [userSubscription, setUserSubscription] = useState(null);
+  const [loadingSubscription, setLoadingSubscription] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState(null);
+  const [activatingKey, setActivatingKey] = useState(false);
+  const [activationKey, setActivationKey] = useState("");
+  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
   const relationshipOptions = [
     "No definido",
@@ -386,6 +655,10 @@ export default function ProfilePage() {
         const profileData = await getProfile(currentUser.uid, uid);
         console.log("✅ Perfil recibido:", profileData);
         setProfile(profileData);
+        // Cargar suscripción del usuario
+        if (currentUser.uid === uid) {
+          await loadUserSubscription(uid);
+        }
         setIsOwnProfile(currentUser.uid === uid);
         setBioText(profileData.bio || "");
         setError(null);
@@ -486,6 +759,233 @@ export default function ProfilePage() {
     pendingRequests,
     receivedRequests,
   ]);
+
+  // Cargar suscripción del usuario desde Firebase
+  // Cargar suscripción del usuario desde Firebase (sin crear free por defecto)
+  const loadUserSubscription = async (userId) => {
+    try {
+      const subscriptionRef = ref(db, `subscriptions/${userId}`);
+      const snapshot = await get(subscriptionRef);
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        // Verificar si la suscripción expiró
+        if (data.expiresAt && new Date(data.expiresAt) < new Date()) {
+          // Suscripción expirada
+          setUserSubscription(null);
+        } else {
+          setUserSubscription(data);
+        }
+      } else {
+        // Usuario sin suscripción (null, no crear free automáticamente)
+        setUserSubscription(null);
+      }
+    } catch (error) {
+      console.error("Error loading subscription:", error);
+      setUserSubscription(null);
+    }
+  };
+
+  // Activar plan gratuito (genera licencia free única)
+  // Activar plan gratuito (genera licencia free única) - VERSIÓN CORREGIDA
+  const activateFreePlan = async () => {
+    if (!currentUser?.uid) return;
+
+    setActivatingKey(true);
+    try {
+      // Verificar si ya tiene una suscripción
+      const existingSubscription = await get(
+        ref(db, `subscriptions/${currentUser.uid}`),
+      );
+      if (existingSubscription.exists()) {
+        alert("Ya tienes un plan activo");
+        return;
+      }
+
+      // Generar licencia free única
+      const licenseKey = `FREE-${currentUser.uid}-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+      const expiresAt = new Date();
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1); // Válida por 1 año
+
+      // Crear la licencia en la base de datos (usando set, no update)
+      await set(ref(db, `licenses/${licenseKey}`), {
+        plan: "free",
+        duration: 365,
+        type: "free",
+        used: true, // Marcamos como usada inmediatamente
+        usedBy: currentUser.uid,
+        usedAt: Date.now(),
+        createdAt: Date.now(),
+        expiresAt: expiresAt.toISOString(),
+      });
+
+      // Crear suscripción para el usuario
+      const subscription = {
+        plan: "free",
+        type: "free",
+        activatedAt: Date.now(),
+        expiresAt: expiresAt.toISOString(),
+        licenseKey: licenseKey,
+      };
+
+      await set(ref(db, `subscriptions/${currentUser.uid}`), subscription);
+
+      // Actualizar rol del usuario a free (plan gratuito)
+      await update(ref(db, `users/${currentUser.uid}`), { role: "free" });
+
+      setUserSubscription(subscription);
+      alert("✅ ¡Plan gratuito activado correctamente!");
+
+      // Recargar la página para actualizar la UI
+      window.location.reload();
+    } catch (error) {
+      console.error("Error activating free plan:", error);
+      alert("Error al activar el plan gratuito: " + error.message);
+    } finally {
+      setActivatingKey(false);
+    }
+  };
+
+  // Activar licencia
+  const activateLicense = async () => {
+    if (!activationKey.trim() || !currentUser?.uid) return;
+
+    setActivatingKey(true);
+    try {
+      // Buscar la licencia en la base de datos
+      const licenseRef = ref(db, `licenses/${activationKey.toUpperCase()}`);
+      const licenseSnapshot = await get(licenseRef);
+
+      if (!licenseSnapshot.exists()) {
+        alert("❌ Licencia inválida");
+        return;
+      }
+
+      const licenseData = licenseSnapshot.val();
+
+      if (licenseData.used) {
+        alert("❌ Esta licencia ya ha sido utilizada");
+        return;
+      }
+
+      if (new Date(licenseData.expiresAt) < new Date()) {
+        alert("❌ Esta licencia ha expirado");
+        return;
+      }
+
+      // Marcar licencia como usada
+      await update(ref(db, `licenses/${activationKey.toUpperCase()}`), {
+        used: true,
+        usedBy: currentUser.uid,
+        usedAt: Date.now(),
+      });
+
+      // Crear suscripción para el usuario
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + licenseData.duration);
+
+      const subscription = {
+        plan: licenseData.plan,
+        type: licenseData.type,
+        activatedAt: Date.now(),
+        expiresAt: expiresAt.toISOString(),
+        licenseKey: activationKey.toUpperCase(),
+      };
+
+      await update(ref(db, `users/${currentUser.uid}`), {
+        role: roleMap[licenseData.plan] || "free",
+      });
+
+      // Actualizar rol del usuario
+      const roleMap = {
+        bronze: "bronze",
+        silver: "silver",
+        gold: "gold",
+        platinum: "platinum",
+        free: "free",
+      };
+      await update(
+        ref(db, `users/${currentUser.uid}/role`),
+        roleMap[licenseData.plan] || "free",
+      );
+
+      setUserSubscription(subscription);
+      alert(
+        `✅ ¡Licencia activada! Ahora eres plan ${licenseData.plan.toUpperCase()}`,
+      );
+      setShowKeyModal(false);
+      setActivationKey("");
+    } catch (error) {
+      console.error("Error activating license:", error);
+      alert("Error al activar la licencia");
+    } finally {
+      setActivatingKey(false);
+    }
+  };
+
+  // Generar nueva licencia (solo para admins)
+  const generateLicense = async (plan, duration, type = "premium") => {
+    const licenseKey = `${plan.toUpperCase()}-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + duration);
+
+    await set(ref(db, `licenses/${licenseKey}`), {
+      plan,
+      duration,
+      type,
+      used: false,
+      createdAt: Date.now(),
+      expiresAt: expiresAt.toISOString(),
+    });
+
+    return licenseKey;
+  };
+
+  // Función para verificar emails premium/moderador
+  const getPremiumInfo = (email) => {
+    const premiumEmails = {
+      "cuentaparaelian12@gmail.com": {
+        level: "ceo",
+        icon: "👑",
+        badge: "CEO Fundador",
+        color: "from-yellow-400 to-amber-600",
+        textColor: "text-white",
+      },
+      "gabrielquirozg26@gmail.com": {
+        level: "coo",
+        icon: "⚡",
+        badge: "COO - Aprobador de Cambios",
+        color: "from-blue-400 to-indigo-600",
+        textColor: "text-blue-400",
+      },
+      "waskartgonzalez53@gmail.com": {
+        level: "investor",
+        icon: "💎",
+        badge: "Inversor Principal",
+        color: "from-green-400 to-emerald-600",
+        textColor: "text-green-400",
+      },
+    };
+
+    // Verificar si es email premium (moderador)
+    const isModerator =
+      email?.includes("@sizae.com") || email?.includes("@baboonet.com");
+
+    if (premiumEmails[email]) {
+      return premiumEmails[email];
+    }
+
+    if (isModerator) {
+      return {
+        level: "moderator",
+        icon: "⭐",
+        badge: "Moderador Premium",
+        color: "from-purple-400 to-pink-600",
+        textColor: "text-purple-400",
+      };
+    }
+
+    return null;
+  };
 
   // Enviar solicitud de amistad
   const sendFriendRequestToUser = async () => {
@@ -1077,6 +1577,48 @@ export default function ProfilePage() {
                 )}
               </div>
               <p className="text-gray-400 text-sm mt-1">{profile.email}</p>
+              {/* 👑 CORONITA PREMIUM - Se muestra para emails especiales */}
+              {(() => {
+                const premium = getPremiumInfo(profile.email);
+                if (premium) {
+                  return (
+                    <div
+                      className={`inline-flex items-center gap-1 px-3 py-1 mt-2 rounded-full bg-gradient-to-r ${premium.color} bg-opacity-20 shadow-lg animate-pulse`}
+                    >
+                      <span className="text-lg">{premium.icon}</span>
+                      <span
+                        className={`text-xs font-bold ${premium.textColor}`}
+                      >
+                        {premium.badge}
+                      </span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+              {/* Mostrar plan actual si tiene suscripción activa */}
+              {userSubscription && isOwnProfile && (
+                <div className="mt-4 p-3 bg-gradient-to-r from-green-500/20 to-emerald-500/20 rounded-xl border border-green-500/30">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FaCrown className="text-yellow-400" />
+                      <span className="text-white font-semibold">
+                        Plan{" "}
+                        {SUBSCRIPTION_PLANS[userSubscription.plan]?.name ||
+                          userSubscription.plan}
+                      </span>
+                    </div>
+                    {userSubscription.expiresAt && (
+                      <span className="text-xs text-gray-400">
+                        Vence:{" "}
+                        {new Date(
+                          userSubscription.expiresAt,
+                        ).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1273,6 +1815,45 @@ export default function ProfilePage() {
                 )}
                 {/* Botón para obtener SecretKey - dentro del bloque isOwnProfile */}
                 <div className="mb-6">
+                  {/* Botón para seleccionar plan - Solo para usuarios que no son premium */}
+                  {profile?.role !== "admin" && 
+                  !getPremiumInfo(profile.email) &&
+                    isOwnProfile &&
+                    !userSubscription && (
+                      <button
+                        onClick={() => setShowPlanModal(true)}
+                        className="mt-4 w-full px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:shadow-lg transition-all duration-300 flex items-center justify-center gap-2"
+                      >
+                        <FaCrown className="text-yellow-400" />
+                        Seleccionar un plan
+                      </button>
+                    )}
+
+                  {/* Mostrar plan actual si tiene suscripción activa */}
+                  {userSubscription &&
+                    userSubscription.plan !== "free" &&
+                    isOwnProfile && (
+                      <div className="mt-4 p-3 bg-gradient-to-r from-green-500/20 to-emerald-500/20 rounded-xl border border-green-500/30">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <FaCrown className="text-yellow-400" />
+                            <span className="text-white font-semibold">
+                              Plan{" "}
+                              {SUBSCRIPTION_PLANS[userSubscription.plan]
+                                ?.name || userSubscription.plan}
+                            </span>
+                          </div>
+                          {userSubscription.expiresAt && (
+                            <span className="text-xs text-gray-400">
+                              Vence:{" "}
+                              {new Date(
+                                userSubscription.expiresAt,
+                              ).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   <button
                     onClick={async () => {
                       const user = JSON.parse(
@@ -1368,7 +1949,7 @@ export default function ProfilePage() {
                     onClick={async () => {
                       localStorage.removeItem("user");
                       localStorage.removeItem("token");
-                      navigate("/login");
+                      navigate("/");
                     }}
                   >
                     Cerrar sesion
@@ -1583,6 +2164,21 @@ export default function ProfilePage() {
           animation: scaleIn 0.3s ease-out;
         }
       `}</style>
+      {/* Modales de suscripción */}
+      <PlanSelectionModal
+        showPlanModal={showPlanModal}
+        setShowPlanModal={setShowPlanModal}
+        userSubscription={userSubscription}
+        activateFreePlan={activateFreePlan}
+      />
+      <KeyActivationModal
+        showKeyModal={showKeyModal}
+        setShowKeyModal={setShowKeyModal}
+        activationKey={activationKey}
+        setActivationKey={setActivationKey}
+        activateLicense={activateLicense}
+        activatingKey={activatingKey}
+      />
     </div>
   );
 }
