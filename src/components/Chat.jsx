@@ -5,9 +5,13 @@ import { db } from "../firebase";
 import ChatList from "./ChatList";
 import ChatWindow from "./ChatWindow";
 
-export default function Chat({ currentUser, setActiveTab }) {
-  const [selectedFriend, setSelectedFriend] = useState(null);
-
+export default function Chat({
+  currentUser,
+  setActiveTab,
+  setIsChatOpen,
+  selectedFriend,
+  setSelectedFriend,
+}) {
   const handleSelectChat = async (
     friendId,
     friendName,
@@ -25,6 +29,15 @@ export default function Chat({ currentUser, setActiveTab }) {
     if (openVideo) {
       localStorage.setItem("openSharedVideo", JSON.stringify(openVideo));
     }
+  };
+
+  const handleOpenChat = (friend) => {
+    setSelectedFriend(friend);
+    if (setIsChatOpen) setIsChatOpen(true);
+  };
+  const handleCloseChat = () => {
+    setSelectedFriend(null);
+    if (setIsChatOpen) setIsChatOpen(false);
   };
 
   const handleBack = () => {

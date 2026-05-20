@@ -28,6 +28,7 @@ import { FaCodeBranch, FaFacebookMessenger } from "react-icons/fa6";
 import { BiSolidMessageAltDetail } from "react-icons/bi";
 import { preloadFFmpeg } from "./utils/uploadToS3SDK";
 import SubscriptionPage from "./components/SubscriptionPage";
+import ToastNotification from "./components/ToastNotification";
 
 // Agregar al inicio del archivo, después de las importaciones
 const styles = `
@@ -203,28 +204,20 @@ export default function Dashboard() {
   const [showReelUploader, setShowReelUploader] = useState(false);
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [userRole, setUserRole] = useState(null);
+  const [notification, setNotification] = useState(null);
+  const [isInChat, setIsInChat] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const lastMessageTimeRef = useRef(null);
+  const [selectedFriend, setSelectedFriend] = useState(null);
   // ... estados existentes ...
-  const { requestPermission, notification, setNotification } =
-    useNotifications(user);
 
   useEffect(() => {
     preloadFFmpeg(); // Precargar FFmpeg en segundo plano
   }, []);
 
-  // Solicitar permisos de notificación cuando el usuario está logueado
-  useEffect(() => {
-    if (user) {
-      // Esperar un momento para no molestar al usuario al cargar
-      const timer = setTimeout(() => {
-        requestPermission();
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [user, requestPermission]);
-
   // Modal de bienvenida para junta directiva
   useEffect(() => {
-    if (!user || !user.email) return;
+    if (!user || !user.email || showWelcomeModal === true) return;
 
     // Definir los miembros de la junta directiva
     const executiveTeam = {
@@ -242,6 +235,21 @@ export default function Dashboard() {
         icon: "👑",
         description:
           "Creador de la visión, líder indiscutible y el corazón de toda la operación. Su genialidad ha hecho posible este ecosistema digital.",
+      },
+      "jesseniabermudez0@gmail.com": {
+        role: "CEO",
+        name: "Jessenia",
+        fullName: "Jessenia Bermúdez",
+        title: "CEO, Fundadora y Dueña 1/4",
+        company: "SIZAE Corp. | BabooNET | BabooApp",
+        honorific: "🌟 Ideadora 🌟",
+        color: "from-yellow-400 to-amber-600",
+        borderColor: "border-yellow-400",
+        bgGradient:
+          "bg-gradient-to-br from-yellow-50 via-amber-50 to-yellow-100",
+        icon: "👑",
+        description:
+          "Ideadora de todo lo que esta app representa, Siempre seras mi ❤ de octubre. La app tiene tu escencia.",
       },
       "gabrielquirozg26@gmail.com": {
         role: "COO",
@@ -331,6 +339,117 @@ export default function Dashboard() {
     const interval = setInterval(checkSharedVideo, 500);
     return () => clearInterval(interval);
   }, [activeTab]);
+
+  // Activar listener de mensajes
+  useEffect(() => {
+    if (user) {
+      const unsubscribe = setupMessageListener();
+      return () => unsubscribe && unsubscribe();
+    }
+  }, [user, isInChat, isChatOpen]);
+
+  // Detectar si estamos en la pestaña "messages" (chats)
+  useEffect(() => {
+    setIsInChat(activeTab === "messages");
+  }, [activeTab]);
+
+  // Reiniciar lastMessageTimeRef al cambiar de usuario
+  useEffect(() => {
+    lastMessageTimeRef.current = null;
+  }, [user?.uid]);
+
+  const handleNotificationPress = (notif) => {
+    setSelectedFriend({
+      friendId: notif.friendId,
+      friendName: notif.senderName,
+      friendPhoto: notif.senderPhoto,
+      friendStatus: "online",
+    });
+    setActiveTab("messages");
+    setNotification(null);
+  };
+
+  const setupMessageListener = () => {
+    if (!user) return;
+
+    const userChatsRef = ref(db, `userChats/${user.uid}`);
+
+    return onValue(userChatsRef, async (snapshot) => {
+      const data = snapshot.val();
+      if (!data) return;
+
+      let latestChat = null;
+      let latestTime = 0;
+
+      Object.entries(data).forEach(([friendId, chat]) => {
+        const lastTime = chat.lastMessageTime || 0;
+        const unreadCount = chat.unreadCount || 0;
+        if (unreadCount > 0 && lastTime > latestTime) {
+          latestTime = lastTime;
+          latestChat = { friendId, ...chat };
+        }
+      });
+
+      if (
+        latestChat &&
+        (lastMessageTimeRef.current === null ||
+          latestTime > lastMessageTimeRef.current) &&
+        !isInChat &&
+        !isChatOpen
+      ) {
+        playNotificationSound();
+        lastMessageTimeRef.current = latestTime;
+
+        try {
+          const chatId = [user.uid, latestChat.friendId].sort().join("_");
+          const messagesRef = ref(db, `chats/${chatId}/messages`);
+          const messagesSnapshot = await get(messagesRef);
+          const messages = messagesSnapshot.val();
+          if (messages) {
+            let lastMessage = null;
+            let lastMessageTimestamp = 0;
+            Object.values(messages).forEach((msg) => {
+              if (
+                msg.timestamp > lastMessageTimestamp &&
+                msg.senderId !== user.uid
+              ) {
+                lastMessageTimestamp = msg.timestamp;
+                lastMessage = msg;
+              }
+            });
+            if (lastMessage) {
+              const date = new Date(lastMessage.timestamp);
+              const time = date.toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+              setNotification({
+                friendId: latestChat.friendId,
+                senderName: latestChat.userName || "Alguien",
+                senderPhoto:
+                  latestChat.userPhoto || "https://via.placeholder.com/50",
+                message: lastMessage.text || "",
+                messageType: lastMessage.type || "text",
+                time: time,
+              });
+            }
+          }
+        } catch (error) {
+          console.error("Error getting message:", error);
+        }
+      }
+    });
+  };
+
+  const playNotificationSound = () => {
+    try {
+      const audio = new Audio("/notificacion.mp3"); // Ruta del sonido en public/
+      audio.volume = 0.5;
+      audio.play().catch((e) => console.log("Error reproduciendo sonido:", e));
+    } catch (error) {
+      console.log("Error con sonido:", error);
+    }
+  };
 
   // Función para obtener datos del usuario desde Firebase
   const getUserData = async (uid) => {
@@ -741,7 +860,6 @@ export default function Dashboard() {
     }
   };
 
-  // Modal de bienvenida para junta directiva
   const WelcomeModal = () => {
     if (!showWelcomeModal || !userRole) return null;
 
@@ -755,156 +873,159 @@ export default function Dashboard() {
     };
 
     return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center modal-overlay bg-black/70 backdrop-blur-sm">
-        {/* Confeti animado solo para CEO */}
-        {isCEO && (
-          <div className="absolute inset-0 pointer-events-none overflow-hidden">
-            {[...Array(50)].map((_, i) => (
-              <div
-                key={i}
-                className="confetti"
-                style={{
-                  left: `${Math.random() * 100}%`,
-                  background: `hsl(${Math.random() * 60 + 40}, 100%, 50%)`,
-                  width: `${Math.random() * 8 + 4}px`,
-                  height: `${Math.random() * 8 + 4}px`,
-                  animationDelay: `${Math.random() * 2}s`,
-                  animationDuration: `${Math.random() * 2 + 2}s`,
-                }}
-              />
-            ))}
-          </div>
-        )}
-
-        <div
-          className={`relative w-full max-w-2xl mx-4 ${
-            isCEO
-              ? "modal-content-ceo"
-              : isCOO
-                ? "modal-content-executive"
-                : "modal-content-investor"
-          }`}
-        >
-          {/* Caja principal */}
+      <div className="fixed inset-0 z-[100] modal-overlay bg-black/70 backdrop-blur-sm overflow-y-auto">
+        <div className="min-h-full flex items-center justify-center p-4">
           <div
-            className={`relative rounded-2xl overflow-hidden ${userRole.bgGradient} border-2 ${userRole.borderColor} shadow-2xl`}
+            className={`relative w-full max-w-2xl mx-auto my-8 ${
+              isCEO
+                ? "modal-content-ceo"
+                : isCOO
+                  ? "modal-content-executive"
+                  : "modal-content-investor"
+            }`}
           >
-            {/* Efecto shine solo para CEO */}
+            {/* Confeti animado solo para CEO (posicionado dentro de este contenedor) */}
             {isCEO && (
-              <div className="absolute inset-0 shine-effect pointer-events-none"></div>
+              <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-2xl">
+                {[...Array(50)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="confetti"
+                    style={{
+                      left: `${Math.random() * 100}%`,
+                      background: `hsl(${Math.random() * 60 + 40}, 100%, 50%)`,
+                      width: `${Math.random() * 8 + 4}px`,
+                      height: `${Math.random() * 8 + 4}px`,
+                      animationDelay: `${Math.random() * 2}s`,
+                      animationDuration: `${Math.random() * 2 + 2}s`,
+                    }}
+                  />
+                ))}
+              </div>
             )}
 
-            {/* Contenido */}
-            <div className="relative p-6 md:p-8">
-              {/* Icono superior flotante */}
-              <div
-                className={`flex justify-center mb-4 ${isCEO ? "float-effect" : ""}`}
-              >
+            {/* Caja principal */}
+            <div
+              className={`relative rounded-2xl overflow-hidden ${userRole.bgGradient} border-2 ${userRole.borderColor} shadow-2xl`}
+            >
+              {/* Efecto shine solo para CEO */}
+              {isCEO && (
+                <div className="absolute inset-0 shine-effect pointer-events-none"></div>
+              )}
+
+              {/* Contenido (scrollable si es necesario, pero ya el modal exterior se encarga) */}
+              <div className="relative p-6 md:p-8">
+                {/* Icono superior flotante */}
                 <div
-                  className={`text-7xl md:text-8xl ${isCEO ? "glow-effect" : ""}`}
+                  className={`flex justify-center mb-4 ${isCEO ? "float-effect" : ""}`}
                 >
-                  {userRole.icon}
-                </div>
-              </div>
-
-              {/* Badge de honor */}
-              <div className="flex justify-center mb-4">
-                <div
-                  className={`px-4 py-1 rounded-full bg-gradient-to-r ${userRole.color} text-white font-bold text-sm shadow-lg border-pulse`}
-                >
-                  {userRole.honorific}
-                </div>
-              </div>
-
-              {/* Título principal */}
-              <h1 className="text-3xl md:text-5xl font-bold text-center mb-2 bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
-                {isCEO
-                  ? "🏆 ¡Bienvenido, Gran Líder! 🏆"
-                  : isCOO
-                    ? "✨ Honorable Miembro de la Junta ✨"
-                    : "💎 Ilustre Visionario 💎"}
-              </h1>
-
-              {/* Nombre destacado */}
-              <div className="text-center mb-6">
-                <p className="text-xl md:text-2xl font-bold text-gray-800">
-                  {userRole.fullName}
-                </p>
-                <p className="text-md md:text-lg text-gray-600 font-semibold mt-1">
-                  {userRole.title}
-                </p>
-              </div>
-
-              {/* Descripción y honores */}
-              <div className="space-y-4 mb-6">
-                <div className="bg-white/50 rounded-xl p-4 backdrop-blur-sm">
-                  <p className="text-gray-700 text-center leading-relaxed">
-                    {userRole.description}
-                  </p>
+                  <div
+                    className={`text-7xl md:text-8xl ${isCEO ? "glow-effect" : ""}`}
+                  >
+                    {userRole.icon}
+                  </div>
                 </div>
 
-                {/* Datos de contacto */}
-                <div className="bg-white/30 rounded-xl p-4">
-                  <p className="text-gray-600 text-sm text-center">
-                    <span className="font-semibold">📧 Correo:</span>{" "}
-                    {user.email}
-                  </p>
-                  <p className="text-gray-600 text-sm text-center mt-1">
-                    <span className="font-semibold">🏢 Empresa:</span>{" "}
-                    {userRole.company}
-                  </p>
+                {/* Badge de honor */}
+                <div className="flex justify-center mb-4">
+                  <div
+                    className={`px-4 py-1 rounded-full bg-gradient-to-r ${userRole.color} text-white font-bold text-sm shadow-lg border-pulse`}
+                  >
+                    {userRole.honorific}
+                  </div>
                 </div>
-              </div>
 
-              {/* Mensaje especial según el rol */}
-              <div
-                className={`rounded-xl p-4 mb-6 ${
-                  isCEO
-                    ? "bg-gradient-to-r from-yellow-100 to-amber-100 border-l-4 border-yellow-500"
-                    : isCOO
-                      ? "bg-gradient-to-r from-blue-100 to-indigo-100 border-l-4 border-blue-500"
-                      : "bg-gradient-to-r from-green-100 to-emerald-100 border-l-4 border-green-500"
-                }`}
-              >
-                <p className="text-gray-700 italic text-center text-sm md:text-base">
+                {/* Título principal */}
+                <h1 className="text-3xl md:text-5xl font-bold text-center mb-2 bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
                   {isCEO
-                    ? '👑 "Sin ti, nada de esto sería posible. Gracias por tu visión inquebrantable y liderazgo excepcional. La historia de la tecnología está siendo escrita por tus manos." - Equipo SIZAE'
+                    ? "🏆 ¡Bienvenido, Gran Líder! 🏆"
                     : isCOO
-                      ? '⚡ "Tu dedicación y genialidad inspiran cada línea de código. El lenguaje Qui-roz vive gracias a tu pasión por la innovación." - Equipo de Desarrollo'
-                      : '💎 "Tu apoyo ha hecho realidad el sueño del primer lenguaje de programación en español. Waskart vivirá por siempre como legado de tu grandeza." - Comunidad de Desarrolladores'}
-                </p>
-              </div>
+                      ? "✨ Honorable Miembro de la Junta ✨"
+                      : "💎 Ilustre Visionario 💎"}
+                </h1>
 
-              {/* Footer con membrete corporativo */}
-              <div className="text-center space-y-2">
-                <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
-                  <span>🏛️ SIZAE Corp.</span>
-                  <span>•</span>
-                  <span>🌐 BabooNET</span>
-                  <span>•</span>
-                  <span>📱 BabooApp</span>
+                {/* Nombre destacado */}
+                <div className="text-center mb-6">
+                  <p className="text-xl md:text-2xl font-bold text-gray-800">
+                    {userRole.fullName}
+                  </p>
+                  <p className="text-md md:text-lg text-gray-600 font-semibold mt-1">
+                    {userRole.title}
+                  </p>
                 </div>
-                <p className="text-xs text-gray-400">
-                  Junta Directiva • Área de Innovación Tecnológica
-                </p>
 
-                {/* Botón de honor */}
-                <button
+                {/* Descripción y honores */}
+                <div className="space-y-4 mb-6">
+                  <div className="bg-white/50 rounded-xl p-4 backdrop-blur-sm">
+                    <p className="text-gray-700 text-center leading-relaxed">
+                      {userRole.description}
+                    </p>
+                  </div>
+
+                  {/* Datos de contacto */}
+                  <div className="bg-white/30 rounded-xl p-4">
+                    <p className="text-gray-600 text-sm text-center">
+                      <span className="font-semibold">📧 Correo:</span>{" "}
+                      {user.email}
+                    </p>
+                    <p className="text-gray-600 text-sm text-center mt-1">
+                      <span className="font-semibold">🏢 Empresa:</span>{" "}
+                      {userRole.company}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Mensaje especial según el rol */}
+                <div
                   onClick={handleClose}
-                  className={`mt-6 px-8 py-3 rounded-xl font-bold text-white transition-all transform hover:scale-105 ${
+                  className={`rounded-xl p-4 mb-6 ${
                     isCEO
-                      ? "bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700"
+                      ? "bg-gradient-to-r from-yellow-100 to-amber-100 border-l-4 border-yellow-500"
                       : isCOO
-                        ? "bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
-                        : "bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700"
-                  } shadow-lg`}
+                        ? "bg-gradient-to-r from-blue-100 to-indigo-100 border-l-4 border-blue-500"
+                        : "bg-gradient-to-r from-green-100 to-emerald-100 border-l-4 border-green-500"
+                  }`}
                 >
-                  {isCEO
-                    ? "👑 Continuar al Tablero de Control 👑"
-                    : isCOO
-                      ? "✨ Acceder al Dashboard ✨"
-                      : "💎 Ingresar al Ecosistema 💎"}
-                </button>
+                  <p className="text-gray-700 italic text-center text-sm md:text-base">
+                    {isCEO
+                      ? '👑 "Sin ti, nada de esto sería posible. Gracias por tu visión inquebrantable y liderazgo excepcional. La historia de la tecnología está siendo escrita por tus manos." - Equipo SIZAE'
+                      : isCOO
+                        ? '⚡ "Tu dedicación y genialidad inspiran cada línea de código. El lenguaje Qui-roz vive gracias a tu pasión por la innovación." - Equipo de Desarrollo'
+                        : '💎 "Tu apoyo ha hecho realidad el sueño del primer lenguaje de programación en español. Waskart vivirá por siempre como legado de tu grandeza." - Comunidad de Desarrolladores'}
+                  </p>
+                </div>
+
+                {/* Footer con membrete corporativo */}
+                <div className="text-center space-y-2">
+                  <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
+                    <span>🏛️ SIZAE Corp.</span>
+                    <span>•</span>
+                    <span>🌐 BabooNET</span>
+                    <span>•</span>
+                    <span>📱 BabooApp</span>
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    Junta Directiva • Área de Innovación Tecnológica
+                  </p>
+
+                  {/* Botón de honor */}
+                  <button
+                    onClick={handleClose}
+                    className={`mt-6 px-8 py-3 rounded-xl font-bold text-white transition-all transform hover:scale-105 ${
+                      isCEO
+                        ? "bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700"
+                        : isCOO
+                          ? "bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
+                          : "bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700"
+                    } shadow-lg`}
+                  >
+                    {isCEO
+                      ? "👑 Continuar al Tablero de Control 👑"
+                      : isCOO
+                        ? "✨ Acceder al Dashboard ✨"
+                        : "💎 Ingresar al Ecosistema 💎"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -940,12 +1061,11 @@ export default function Dashboard() {
         height: "100dvh",
       }}
     >
-      {notification && (
-        <NotificationToast
-          notification={notification}
-          onClose={() => setNotification(null)}
-        />
-      )}
+      <ToastNotification
+        notification={notification}
+        onPress={handleNotificationPress}
+        onHide={() => setNotification(null)}
+      />
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -1008,7 +1128,8 @@ export default function Dashboard() {
                       </span>
                     )}
                   </button>
-                  {user?.role && user?.role === "free" || user?.role === "admin" ? (
+                  {(user?.role && user?.role === "free") ||
+                  user?.role === "admin" ? (
                     <button
                       onClick={() => setActiveTab("projects")}
                       className={`flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-xl transition-all relative border-2 border-white`}
@@ -1137,7 +1258,13 @@ export default function Dashboard() {
         {activeTab === "projects" && <ProjectsPage currentUser={user} />}
         {activeTab === "community" && <FriendsManager user={user} />}
         {activeTab === "messages" && (
-          <Chat setActiveTab={setActiveTab} currentUser={user} />
+          <Chat
+            setActiveTab={setActiveTab}
+            currentUser={user}
+            selectedFriend={selectedFriend}
+            setSelectedFriend={setSelectedFriend}
+            setIsChatOpen={setIsChatOpen}
+          />
         )}
         {activeTab === "settings" && (
           <SubscriptionPage setActiveTab={setActiveTab} />

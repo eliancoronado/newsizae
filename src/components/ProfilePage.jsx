@@ -950,6 +950,13 @@ export default function ProfilePage() {
         color: "from-yellow-400 to-amber-600",
         textColor: "text-white",
       },
+      "jesseniabermudez0@gmail.com": {
+        level: "ceo",
+        icon: "👑",
+        badge: "CEO Inspiradora",
+        color: "from-yellow-400 to-amber-600",
+        textColor: "text-white",
+      },
       "gabrielquirozg26@gmail.com": {
         level: "coo",
         icon: "⚡",
