@@ -48,6 +48,17 @@ export default function ChatWindow({
   const [showCallPanel, setShowCallPanel] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
 
+  // Estados para respuesta a mensajes
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [showReplyBar, setShowReplyBar] = useState(false);
+
+  // Estados para grabación de audio
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [audioChunks, setAudioChunks] = useState([]);
+  const [isPlaying, setIsPlaying] = useState(null);
+
   // Scroll al final cuando hay nuevos mensajes
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -147,6 +158,174 @@ export default function ChatWindow({
     return () => unsubscribe();
   }, [chatId, currentUser.uid, friendId]);
 
+  // Manejar respuesta a un mensaje
+  const handleReply = (message) => {
+    setReplyingTo(message);
+    setShowReplyBar(true);
+  };
+
+  // Cancelar respuesta
+  const cancelReply = () => {
+    setReplyingTo(null);
+    setShowReplyBar(false);
+  };
+
+  // Solicitar permisos de micrófono
+  const requestMicrophonePermission = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      return true;
+    } catch (error) {
+      alert("Necesitamos acceso al micrófono para grabar audios");
+      return false;
+    }
+  };
+
+  // Iniciar grabación
+  const startRecording = async () => {
+    const hasPermission = await requestMicrophonePermission();
+    if (!hasPermission) return;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(chunks, { type: "audio/webm" });
+        await sendAudioMessage(audioBlob, recordingDuration);
+        setAudioChunks([]);
+        setRecordingDuration(0);
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+
+      // Contador de duración
+      const startTime = Date.now();
+      const interval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        setRecordingDuration(elapsed);
+      }, 1000);
+      window.recordingInterval = interval;
+    } catch (err) {
+      console.error("Error al iniciar grabación:", err);
+      alert("No se pudo iniciar la grabación");
+    }
+  };
+
+  // Detener grabación y enviar
+  const stopRecordingAndSend = async () => {
+    if (!mediaRecorder) return;
+
+    if (window.recordingInterval) {
+      clearInterval(window.recordingInterval);
+    }
+
+    mediaRecorder.stop();
+    mediaRecorder.stream.getTracks().forEach((track) => track.stop());
+    setIsRecording(false);
+    setMediaRecorder(null);
+  };
+
+  // Enviar mensaje de audio
+  const sendAudioMessage = async (audioBlob, durationSeconds) => {
+    setIsSending(true);
+    try {
+      const file = new File([audioBlob], `audio_${Date.now()}.webm`, {
+        type: "audio/webm",
+      });
+      const audioUrl = await uploadToS3(file);
+
+      const message = {
+        text: "",
+        audioUrl,
+        type: "audio",
+        duration: durationSeconds,
+        senderId: currentUser.uid,
+        senderName: currentUser.name,
+        senderPhoto: currentUser.picture,
+        timestamp: Date.now(),
+        read: false,
+      };
+
+      const messagesRef = ref(db, `chats/${chatId}/messages`);
+      await push(messagesRef, message);
+
+      await update(ref(db, `chats/${chatId}`), {
+        lastMessage: {
+          text: "🎤 Mensaje de voz",
+          timestamp: Date.now(),
+          senderId: currentUser.uid,
+        },
+      });
+
+      await update(ref(db, `userChats/${friendId}/${currentUser.uid}`), {
+        lastMessage: "🎤 Mensaje de voz",
+        lastMessageTime: Date.now(),
+        userName: currentUser.name,
+        userPhoto: currentUser.picture,
+        chatId,
+      });
+
+      await update(ref(db, `userChats/${currentUser.uid}/${friendId}`), {
+        lastMessage: "🎤 Mensaje de voz",
+        lastMessageTime: Date.now(),
+        userName: friendName,
+        userPhoto: friendPhoto,
+        chatId,
+        unreadCount: 0,
+      });
+    } catch (error) {
+      console.error("Error sending audio:", error);
+      alert("Error al enviar el audio");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // Reproducir audio
+  const playAudio = (audioUrl, messageId) => {
+    if (isPlaying === messageId) {
+      const audio = document.getElementById(`audio-${messageId}`);
+      if (audio) {
+        audio.pause();
+        audio.currentTime = 0;
+      }
+      setIsPlaying(null);
+    } else {
+      if (isPlaying) {
+        const prevAudio = document.getElementById(`audio-${isPlaying}`);
+        if (prevAudio) {
+          prevAudio.pause();
+          prevAudio.currentTime = 0;
+        }
+      }
+      const audio = document.getElementById(`audio-${messageId}`);
+      if (audio) {
+        audio.play();
+        setIsPlaying(messageId);
+        audio.onended = () => setIsPlaying(null);
+      }
+    }
+  };
+
+  // Formatear duración
+  const formatDuration = (seconds) => {
+    if (!seconds && seconds !== 0) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? "0" + secs : secs}`;
+  };
+
   const sendMessage = async (e) => {
     e.preventDefault();
     const messageText = newMessage.trim();
@@ -163,6 +342,29 @@ export default function ChatWindow({
       timestamp: Date.now(),
       read: false,
     };
+
+    // Si estamos respondiendo a un mensaje
+    if (replyingTo) {
+      message.replyTo = {
+        messageId: replyingTo.id,
+        text:
+          replyingTo.text ||
+          (replyingTo.type === "image"
+            ? "📷 Imagen"
+            : replyingTo.type === "audio"
+              ? "🎤 Mensaje de voz"
+              : ""),
+        type: replyingTo.type || "text",
+        senderName: replyingTo.senderName,
+      };
+      if (replyingTo.type === "image" && replyingTo.imageUrl) {
+        message.replyTo.imageUrl = replyingTo.imageUrl;
+      }
+      if (replyingTo.type === "audio" && replyingTo.audioUrl) {
+        message.replyTo.audioUrl = replyingTo.audioUrl;
+        message.replyTo.duration = replyingTo.duration;
+      }
+    }
 
     try {
       setNewMessage("");
@@ -211,6 +413,7 @@ export default function ChatWindow({
         messageToSend,
         currentUser.picture,
       );
+      cancelReply(); // Limpiar respuesta después de enviar
     } catch (error) {
       console.error("Error sending message:", error);
       setNewMessage(messageToSend);
@@ -444,6 +647,10 @@ export default function ChatWindow({
             <div
               key={msg.id}
               className={`flex ${msg.senderId === currentUser.uid ? "justify-end" : "justify-start"} animate-fade-in`}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                handleReply(msg);
+              }}
             >
               {msg.senderId !== currentUser.uid && (
                 <img
@@ -463,6 +670,60 @@ export default function ChatWindow({
                       className="rounded-2xl max-w-full max-h-60 object-cover cursor-pointer hover:opacity-90 transition"
                       onClick={() => setPreviewImage(msg.imageUrl)}
                     />
+                  </div>
+                )}
+                {msg.type === "audio" && msg.audioUrl && (
+                  <div className="mb-1">
+                    <audio
+                      id={`audio-${msg.id}`}
+                      src={msg.audioUrl}
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => playAudio(msg.audioUrl, msg.id)}
+                      className="flex items-center gap-3 bg-[#2a2a2a] px-4 py-2 rounded-full hover:bg-[#3a3a3a] transition"
+                    >
+                      <svg
+                        className={`w-6 h-6 ${isPlaying === msg.id ? "text-[#0095f6]" : "text-white"}`}
+                        fill="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        {isPlaying === msg.id ? (
+                          <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                        ) : (
+                          <path d="M8 5v14l11-7z" />
+                        )}
+                      </svg>
+                      <div className="flex items-center gap-1">
+                        {[8, 14, 20, 14, 8].map((h, i) => (
+                          <div
+                            key={i}
+                            className="w-1 bg-[#0095f6] rounded-full animate-pulse"
+                            style={{ height: h }}
+                          ></div>
+                        ))}
+                      </div>
+                      <span className="text-white text-sm ml-2">
+                        {formatDuration(msg.duration)}
+                      </span>
+                    </button>
+                  </div>
+                )}
+                {msg.replyTo && (
+                  <div className="mb-2 p-2 bg-white/5 rounded-lg border-l-3 border-[#0095f6] text-sm">
+                    <p className="text-[#0095f6] text-xs font-semibold">
+                      {msg.replyTo.senderName === currentUser.name
+                        ? "Tú"
+                        : msg.replyTo.senderName}
+                    </p>
+                    <p className="text-gray-400 text-xs truncate">
+                      {msg.replyTo.text ||
+                        (msg.replyTo.type === "image"
+                          ? "📷 Imagen"
+                          : msg.replyTo.type === "audio"
+                            ? "🎤 Mensaje de voz"
+                            : "")}
+                    </p>
                   </div>
                 )}
                 {/* Video compartido */}
@@ -548,6 +809,87 @@ export default function ChatWindow({
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Barra de respuesta */}
+      {showReplyBar && replyingTo && (
+        <div className="flex-shrink-0 bg-[#1a1a2e] border-t border-[#3E4042] p-2 px-3 animate-slideUp">
+          <div className="flex items-center gap-3">
+            <div className="w-1 h-10 bg-[#0095f6] rounded-full"></div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 text-xs text-[#0095f6]">
+                <svg
+                  className="w-3 h-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
+                  />
+                </svg>
+                <span>
+                  Respondiendo a{" "}
+                  {replyingTo.senderName === currentUser.name
+                    ? "ti mismo"
+                    : replyingTo.senderName}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                {replyingTo.type === "image" && replyingTo.imageUrl && (
+                  <img
+                    src={replyingTo.imageUrl}
+                    className="w-5 h-5 rounded object-cover"
+                  />
+                )}
+                {replyingTo.type === "audio" && (
+                  <svg
+                    className="w-4 h-4 text-[#0095f6]"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                    />
+                  </svg>
+                )}
+                <span className="text-sm text-gray-300 truncate">
+                  {replyingTo.text ||
+                    (replyingTo.type === "image"
+                      ? "📷 Imagen"
+                      : replyingTo.type === "audio"
+                        ? "🎤 Mensaje de voz"
+                        : "")}
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={cancelReply}
+              className="p-1 hover:bg-[#3A3B3C] rounded-full"
+            >
+              <svg
+                className="w-4 h-4 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Input - fijo abajo, se mantiene visible */}
       <div className="flex-shrink-0 p-3 border-t border-[#3E4042] bg-[#242526]">
         <form autoComplete="off" onSubmit={sendMessage} className="flex gap-2">
@@ -565,6 +907,29 @@ export default function ChatWindow({
             className="bg-[#3A3B3C] hover:bg-[#4A4B4C] text-[#2e9b4f] p-2 rounded-full transition"
           >
             <FaImage className="text-xl" />
+          </button>
+
+          <button
+            type="button"
+            onMouseDown={startRecording}
+            onMouseUp={stopRecordingAndSend}
+            onTouchStart={startRecording}
+            onTouchEnd={stopRecordingAndSend}
+            className={`bg-[#3A3B3C] hover:bg-[#4A4B4C] p-2 rounded-full transition ${isRecording ? "text-red-500" : "text-[#0095f6]"}`}
+          >
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+              />
+            </svg>
           </button>
 
           <textarea

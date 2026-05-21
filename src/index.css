@@ -108,6 +108,11 @@ textarea {
   animation: ping-slow 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
 
+.border-l-3 {
+  border-left-width: 3px;
+}
+
+
 /* Opcional: Solo para móvil */
 @media (max-width: 768px) {
   ::-webkit-scrollbar {
