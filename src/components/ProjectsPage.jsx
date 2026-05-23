@@ -23,6 +23,8 @@ import { useNavigate } from "react-router-dom";
 import { FaTimes, FaCheck } from "react-icons/fa";
 import { getMyFriends } from "../firebaseService";
 import { shareProject, getProjectHistory } from "../utils/projectsService";
+import { ref, get, update } from "firebase/database";
+import { db } from "../firebase";
 
 const languageInfo = {
   waskart: { name: "Waskart", icon: "⚡", color: "from-blue-500 to-blue-600" },
@@ -64,6 +66,7 @@ export default function ProjectsPage({ currentUser }) {
   const [showAccessDenied, setShowAccessDenied] = useState(false);
   const [accessDeniedMessage, setAccessDeniedMessage] = useState("");
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+  const [userDiamonds, setUserDiamonds] = useState(0);
 
   useEffect(() => {
     if (!currentUser) {
@@ -93,7 +96,20 @@ export default function ProjectsPage({ currentUser }) {
     };
 
     loadProjects();
-  }, [currentUser]);
+  }, []);
+
+  // useEffect separado para cargar diamantes
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+
+    const loadUserDiamonds = async () => {
+      const diamondsRef = ref(db, `users/${currentUser.uid}/diamonds`);
+      const snapshot = await get(diamondsRef);
+      setUserDiamonds(snapshot.val() || 0);
+    };
+
+    loadUserDiamonds();
+  }, [currentUser?.uid]);
 
   // Cargar amigos para compartir
   const loadFriends = async () => {
@@ -182,22 +198,44 @@ export default function ProjectsPage({ currentUser }) {
 
   const handleCreateProject = async () => {
     setCreating(true);
-    try {
-      console.log(
-        "🚀 [ProjectsPage] Creando proyecto con lenguaje:",
-        selectedLanguage,
+
+    if (userDiamonds < 100) {
+      alert(
+        "❌ No tienes suficientes diamantes para crear un proyecto. Necesitas 100 diamantes.",
       );
+      setCreating(false);
+      return;
+    }
+
+    try {
+      // 2. Crear el proyecto
       const newProject = await createProject(
         currentUser.uid,
         selectedLanguage,
         currentUser.name,
       );
-      console.log("✅ [ProjectsPage] Proyecto creado:", newProject);
-      setProjects([newProject, ...projects]);
+
+      // 3. Actualizar la lista de proyectos INMEDIATAMENTE
+      setProjects((prevProjects) => {
+        // Evitar duplicados
+        if (prevProjects.some((p) => p.id === newProject.id)) {
+          return prevProjects;
+        }
+        return [newProject, ...prevProjects];
+      });
+
+      // 1. Cobrar los diamantes
+      const newBalance = userDiamonds - 100;
+      await update(ref(db, `users/${currentUser.uid}`), {
+        diamonds: newBalance,
+      });
+      setUserDiamonds(newBalance);
+
+      // 4. Limpiar modal
       setShowLanguageModal(false);
       setSelectedLanguage("waskart");
     } catch (error) {
-      console.error("❌ [ProjectsPage] Error creating project:", error);
+      console.error("Error creating project:", error);
       alert("Error al crear el proyecto: " + error.message);
     } finally {
       setCreating(false);
@@ -786,8 +824,8 @@ export default function ProjectsPage({ currentUser }) {
 
       {/* Modal de lenguaje mejorado */}
       {showLanguageModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 animate-fadeIn">
-          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl w-full max-w-md mx-4 overflow-hidden shadow-2xl transform animate-scaleUp">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 animate-fadeIn p-4">
+          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl transform animate-scaleUp">
             <div className="relative p-6">
               {/* Decoración */}
               <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-2xl"></div>
@@ -817,6 +855,50 @@ export default function ProjectsPage({ currentUser }) {
                     Elige el lenguaje que prefieras para comenzar
                   </p>
                 </div>
+
+                {/* Mostrar diamantes del usuario */}
+                <div className="bg-gray-700/30 rounded-xl p-3 mb-4 text-center">
+                  <p className="text-gray-400 text-sm">
+                    Tus diamantes disponibles
+                  </p>
+                  <div className="flex items-center justify-center gap-2 mt-1">
+                    <svg
+                      className="w-5 h-5 text-blue-400"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M12 2L15 8.5L22 9.5L17 14L18.5 21L12 17.5L5.5 21L7 14L2 9.5L9 8.5L12 2Z" />
+                    </svg>
+                    <span className="text-2xl font-bold text-white">
+                      {userDiamonds}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Mostrar costo del proyecto */}
+                <div className="bg-purple-500/20 rounded-xl p-3 mb-4 text-center border border-purple-500/30">
+                  <p className="text-gray-300 text-sm">Costo de creación</p>
+                  <div className="flex items-center justify-center gap-2 mt-1">
+                    <svg
+                      className="w-5 h-5 text-yellow-400"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M12 2L15 8.5L22 9.5L17 14L18.5 21L12 17.5L5.5 21L7 14L2 9.5L9 8.5L12 2Z" />
+                    </svg>
+                    <span className="text-xl font-bold text-yellow-400">
+                      100 Diamantes
+                    </span>
+                  </div>
+                </div>
+
+                {userDiamonds < 100 && (
+                  <div className="bg-red-500/20 rounded-xl p-3 mb-4 text-center border border-red-500/30">
+                    <p className="text-red-400 text-sm">
+                      ⚠️ No tienes suficientes diamantes
+                    </p>
+                  </div>
+                )}
 
                 <div className="space-y-3 mb-6">
                   {/* Waskart */}
@@ -932,7 +1014,7 @@ export default function ProjectsPage({ currentUser }) {
                   </div>
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex gap-3 sticky bottom-0 bg-gradient-to-br from-gray-800 to-gray-900 pt-2">
                   <button
                     onClick={() => setShowLanguageModal(false)}
                     className="flex-1 px-4 py-2.5 bg-gray-700 text-white font-medium rounded-xl hover:bg-gray-600 transition-all duration-300"
@@ -941,16 +1023,20 @@ export default function ProjectsPage({ currentUser }) {
                   </button>
                   <button
                     onClick={handleCreateProject}
-                    disabled={creating}
-                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-medium rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={creating || userDiamonds < 100}
+                    className={`flex-1 px-4 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-medium rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      userDiamonds < 100 ? "opacity-50 cursor-not-allowed" : ""
+                    }`}
                   >
                     {creating ? (
                       <div className="flex items-center justify-center gap-2">
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                         Creando...
                       </div>
+                    ) : userDiamonds < 100 ? (
+                      "Diamantes insuficientes"
                     ) : (
-                      "Crear proyecto"
+                      "Crear proyecto (100💎)"
                     )}
                   </button>
                 </div>
@@ -959,7 +1045,6 @@ export default function ProjectsPage({ currentUser }) {
           </div>
         </div>
       )}
-
       {/* Modal de renombrar mejorado */}
       {editingProject && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 animate-fadeIn">
