@@ -29,6 +29,7 @@ import { BiSolidMessageAltDetail } from "react-icons/bi";
 import { preloadFFmpeg } from "./utils/uploadToS3SDK";
 import SubscriptionPage from "./components/SubscriptionPage";
 import ToastNotification from "./components/ToastNotification";
+import StorePage from "./components/StorePage";
 
 // Agregar al inicio del archivo, después de las importaciones
 const styles = `

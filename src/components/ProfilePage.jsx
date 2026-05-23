@@ -23,15 +23,7 @@ import { uploadToS3 } from "../utils/uploadToS3SDK";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../firebase";
 import { sendFriendRequest, acceptFriendRequest } from "../firebaseService";
-import {
-  ref,
-  onValue,
-  push,
-  set,
-  remove,
-  update,
-  get,
-} from "firebase/database";
+import { ref, onValue, get, set, update, push, remove } from "firebase/database";
 import { db } from "../firebase";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
@@ -47,6 +39,7 @@ import {
   updateUserNameInChats,
 } from "../firebaseService";
 import { generateCustomToken } from "../utils/generateCustomToken";
+import { IoDiamond } from "react-icons/io5";
 
 // Definición de rangos
 const roleInfo = {
@@ -527,6 +520,7 @@ export default function ProfilePage() {
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
+  const [userDiamonds, setUserDiamonds] = useState(0);
   const relationshipOptions = [
     "No definido",
     "Soltero/a",
@@ -658,6 +652,7 @@ export default function ProfilePage() {
         // Cargar suscripción del usuario
         if (currentUser.uid === uid) {
           await loadUserSubscription(uid);
+          await loadUserDiamonds();
         }
         setIsOwnProfile(currentUser.uid === uid);
         setBioText(profileData.bio || "");
@@ -759,6 +754,17 @@ export default function ProfilePage() {
     pendingRequests,
     receivedRequests,
   ]);
+
+  const loadUserDiamonds = async () => {
+    if (!currentUser?.uid) return;
+    const diamondsRef = ref(db, `users/${currentUser.uid}/diamonds`);
+    const snapshot = await get(diamondsRef);
+    setUserDiamonds(snapshot.val() || 0);
+    // Listener en tiempo real
+    onValue(diamondsRef, (snap) => {
+      setUserDiamonds(snap.val() || 0);
+    });
+  };
 
   // Cargar suscripción del usuario desde Firebase
   // Cargar suscripción del usuario desde Firebase (sin crear free por defecto)
@@ -1446,6 +1452,19 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0f0f0f] to-[#1a1a1a]">
+      {/* Botón de diamantes - Solo para perfil propio */}
+      {isOwnProfile && (
+        <div className="fixed top-20 right-4 z-20">
+          <button
+            onClick={() => navigate("/store")}
+            className="flex items-center gap-2 bg-gradient-to-r from-purple-900 to-pink-900 hover:from-purple-800 hover:to-pink-800 rounded-full px-4 py-2 shadow-lg transition"
+          >
+            <IoDiamond className="text-blue-400" />
+            <span className="text-white font-bold">{userDiamonds}</span>
+            <span className="text-xs text-gray-300">💰</span>
+          </button>
+        </div>
+      )}
       {/* Modal de imagen expandida */}
       {expandedImage && (
         <div
@@ -1823,8 +1842,8 @@ export default function ProfilePage() {
                 {/* Botón para obtener SecretKey - dentro del bloque isOwnProfile */}
                 <div className="mb-6">
                   {/* Botón para seleccionar plan - Solo para usuarios que no son premium */}
-                  {profile?.role !== "admin" && 
-                  !getPremiumInfo(profile.email) &&
+                  {profile?.role !== "admin" &&
+                    !getPremiumInfo(profile.email) &&
                     isOwnProfile &&
                     !userSubscription && (
                       <button

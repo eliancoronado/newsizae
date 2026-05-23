@@ -9,6 +9,7 @@ import ProfilePage from "./components/ProfilePage.jsx";
 import { useFullscreen } from "./hooks/useFullscreen";
 import AppB from "./components/AppB.jsx";
 import AppBB from "./components/AppBB.jsx";
+import StorePage from "./components/StorePage.jsx";
 
 // Componente que envuelve toda la app con pantalla completa
 const AppWithFullscreen = () => {
@@ -52,6 +53,7 @@ registerServiceWorker();
         <Route path="/" element={<Login />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/profile/:uid" element={<ProfilePage />} />
+        <Route path="/store" element={<StorePage />} />
         <Route path="/profile/:uid" element={<ProfilePage />} />
         <Route path="/project/:id" element={<AppB />} />
         <Route path="/projects/:id" element={<AppBB />} />
