@@ -39,6 +39,7 @@ import { sendFriendRequest } from "../firebaseService";
 import { getUserById } from "../firebaseService";
 import { es } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
+import { GoAlertFill } from "react-icons/go";
 
 const Feed = ({ currentUser }) => {
   // Estados existentes
@@ -1395,6 +1396,17 @@ const Feed = ({ currentUser }) => {
                   </button>
                 </div>
               )}
+              <button
+                onClick={() =>
+                  confirm(
+                    "Desea reportar este post (3 reportes y es eliminado)",
+                  )
+                }
+                className="text-gray-400 hover:text-red-500 transition"
+                title="Eliminar publicación"
+              >
+                <GoAlertFill />
+              </button>
             </div>
 
             <p className="px-4 pb-2 text-white">{post.content}</p>

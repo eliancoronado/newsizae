@@ -11,6 +11,7 @@ import {
   FaSmile,
   FaPaperPlane,
   FaPlay,
+  FaSignOutAlt,
 } from "react-icons/fa";
 import { getAuth } from "firebase/auth";
 import { sendPushNotification } from "../utils/notifications";
@@ -21,6 +22,9 @@ import StickerPicker from "./StickerPicker";
 import ImagePicker from "./ImagePicker";
 import { uploadToS3 } from "../utils/uploadToS3SDK";
 import ImagePreviewModal from "./ImagePreviewModal";
+// Agrega esta importación al inicio del archivo
+import AddMemberModal from "./AddMemberModal";
+import { FaUserPlus } from "react-icons/fa"; // Si no está ya importado
 
 export default function ChatWindow({
   currentUser,
@@ -30,13 +34,16 @@ export default function ChatWindow({
   friendStatus,
   onBack,
   isMobile = false,
+  isGroup,
 }) {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
-  const chatId = [currentUser.uid, friendId].sort().join("_");
+  const chatId = isGroup
+    ? friendId
+    : [currentUser.uid, friendId].sort().join("_");
   const [friendIsTyping, setFriendIsTyping] = useState(false);
   const inputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -58,6 +65,10 @@ export default function ChatWindow({
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [audioChunks, setAudioChunks] = useState([]);
   const [isPlaying, setIsPlaying] = useState(null);
+  const [groupMembers, setGroupMembers] = useState([]);
+
+  // Agrega este estado después de los otros estados (cerca de línea ~50)
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
 
   // Scroll al final cuando hay nuevos mensajes
   useEffect(() => {
@@ -122,8 +133,36 @@ export default function ChatWindow({
     return () => unsubscribe();
   }, [friendId, currentUser.uid]);
 
+  // ✅ Mantén SOLO este useEffect para cargar los miembros del grupo
+  // ✅ CORREGIDO: Cargar miembros del grupo correctamente
+  useEffect(() => {
+    if (!friendId || !isGroup) return;
+
+    const groupRef = ref(db, `groups/${friendId}`);
+    const unsubscribe = onValue(groupRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data && data.members) {
+        const membersList = Object.entries(data.members).map(
+          ([uid, member]) => ({
+            uid,
+            name: member.name,
+            photo: member.photo,
+            role: member.role,
+            joinedAt: member.joinedAt,
+          }),
+        );
+        setGroupMembers(membersList);
+      } else {
+        setGroupMembers([]);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [friendId, isGroup]);
+
   useEffect(() => {
     if (!chatId) return;
+
     const messagesRef = ref(db, `chats/${chatId}/messages`);
     const unsubscribe = onValue(messagesRef, (snapshot) => {
       const data = snapshot.val();
@@ -133,22 +172,33 @@ export default function ChatWindow({
           .sort((a, b) => a.timestamp - b.timestamp);
         setMessages(messagesList);
 
-        const unreadMessages = messagesList.filter(
-          (msg) => !msg.read && msg.senderId !== currentUser.uid,
-        );
-        if (unreadMessages.length > 0) {
-          unreadMessages.forEach((msg) => {
-            const messageRef = ref(
-              db,
-              `chats/${chatId}/messages/${msg.id}/read`,
-            );
-            set(messageRef, true);
-          });
-          const userChatRef = ref(
-            db,
-            `userChats/${currentUser.uid}/${friendId}`,
+        // ✅ Marcar mensajes como leídos
+        if (!isGroup) {
+          // Chats privados: marcar en userChats
+          const unreadMessages = messagesList.filter(
+            (msg) => !msg.read && msg.senderId !== currentUser.uid,
           );
-          update(userChatRef, { unreadCount: 0 });
+          if (unreadMessages.length > 0) {
+            unreadMessages.forEach((msg) => {
+              const messageRef = ref(
+                db,
+                `chats/${chatId}/messages/${msg.id}/read`,
+              );
+              set(messageRef, true);
+            });
+            const userChatRef = ref(
+              db,
+              `userChats/${currentUser.uid}/${friendId}`,
+            );
+            update(userChatRef, { unreadCount: 0 });
+          }
+        } else {
+          // ✅ Grupos: marcar en userGroups
+          const userGroupRef = ref(
+            db,
+            `userGroups/${currentUser.uid}/${friendId}`,
+          );
+          update(userGroupRef, { unreadCount: 0 });
         }
       } else {
         setMessages([]);
@@ -156,7 +206,15 @@ export default function ChatWindow({
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [chatId, currentUser.uid, friendId]);
+  }, [chatId, currentUser.uid, friendId, isGroup]);
+
+  // Agrega este useEffect para marcar mensajes como leídos en grupos
+  useEffect(() => {
+    if (!friendId || !isGroup) return;
+
+    const userGroupRef = ref(db, `userGroups/${currentUser.uid}/${friendId}`);
+    update(userGroupRef, { unreadCount: 0 });
+  }, [friendId, isGroup, currentUser.uid]);
 
   // Manejar respuesta a un mensaje
   const handleReply = (message) => {
@@ -379,40 +437,73 @@ export default function ChatWindow({
         },
       });
 
-      const friendChatRef = ref(db, `userChats/${friendId}/${currentUser.uid}`);
-      const snapshot = await get(friendChatRef);
-      const currentUnread = snapshot.val()?.unreadCount || 0;
-      const newUnread = currentUnread + 1;
+      if (isGroup && groupMembers.length > 0) {
+        // ✅ Actualizar userGroups para cada miembro
+        const updates = {};
 
-      await update(ref(db, `userChats/${friendId}/${currentUser.uid}`), {
-        lastMessage: messageToSend,
-        lastMessageTime: Date.now(),
-        userName: currentUser.name,
-        userPhoto: currentUser.picture,
-        chatId: chatId,
-        unreadCount: newUnread,
-      });
+        for (const member of groupMembers) {
+          const memberGroupRef = `userGroups/${member.uid}/${friendId}`;
+          const snapshot = await get(ref(db, memberGroupRef));
+          const currentUnread = snapshot.val()?.unreadCount || 0;
 
-      await update(ref(db, `userChats/${currentUser.uid}/${friendId}`), {
-        lastMessage: messageToSend,
-        lastMessageTime: Date.now(),
-        userName: friendName,
-        userPhoto: friendPhoto,
-        chatId: chatId,
-        unreadCount: 0,
-      });
+          updates[memberGroupRef] = {
+            groupId: friendId,
+            groupName: friendName,
+            groupPhoto: friendPhoto || "https://via.placeholder.com/50",
+            lastMessage: messageToSend,
+            lastMessageTime: Date.now(),
+            unreadCount: member.uid === currentUser.uid ? 0 : currentUnread + 1,
+          };
+        }
 
-      const typingRef = ref(
-        db,
-        `userChats/${friendId}/${currentUser.uid}/typing`,
-      );
-      await set(typingRef, false);
-      await sendPushNotification(
-        friendId,
-        currentUser.name,
-        messageToSend,
-        currentUser.picture,
-      );
+        // ✅ También actualizar el último mensaje en el grupo
+        updates[`groups/${friendId}/lastMessage`] = messageToSend;
+        updates[`groups/${friendId}/lastMessageTime`] = Date.now();
+
+        await update(ref(db), updates);
+      } else {
+        // ✅ PARA CHATS INDIVIDUALES: Actualizar userChats
+        const friendChatRef = ref(
+          db,
+          `userChats/${friendId}/${currentUser.uid}`,
+        );
+        const snapshot = await get(friendChatRef);
+        const currentUnread = snapshot.val()?.unreadCount || 0;
+        const newUnread = currentUnread + 1;
+
+        await update(ref(db, `userChats/${friendId}/${currentUser.uid}`), {
+          lastMessage: messageToSend,
+          lastMessageTime: Date.now(),
+          userName: currentUser.name,
+          userPhoto: currentUser.picture || "https://via.placeholder.com/50",
+          chatId: chatId,
+          unreadCount: newUnread,
+        });
+
+        await update(ref(db, `userChats/${currentUser.uid}/${friendId}`), {
+          lastMessage: messageToSend,
+          lastMessageTime: Date.now(),
+          userName: friendName,
+          userPhoto: friendPhoto || "https://via.placeholder.com/50",
+          chatId: chatId,
+          unreadCount: 0,
+        });
+
+        const typingRef = ref(
+          db,
+          `userChats/${friendId}/${currentUser.uid}/typing`,
+        );
+        await set(typingRef, false);
+
+        // Enviar notificación push solo para chats individuales
+        await sendPushNotification(
+          friendId,
+          currentUser.name,
+          messageToSend,
+          currentUser.picture,
+        );
+      }
+
       cancelReply(); // Limpiar respuesta después de enviar
     } catch (error) {
       console.error("Error sending message:", error);
@@ -549,6 +640,48 @@ export default function ChatWindow({
     }
   };
 
+  // Salir del grupo
+  const leaveGroup = async () => {
+    if (!isGroup) return;
+    if (
+      !confirm(`¿Estás seguro de que quieres salir del grupo "${friendName}"?`)
+    )
+      return;
+
+    try {
+      // Eliminar al usuario de los miembros del grupo
+      await set(ref(db, `groups/${friendId}/members/${currentUser.uid}`), null);
+
+      // Actualizar el contador de miembros
+      const groupRef = ref(db, `groups/${friendId}`);
+      const groupSnap = await get(groupRef);
+      const currentMembers = groupSnap.val()?.members || {};
+      const newMemberCount = Object.keys(currentMembers).length - 1;
+      await update(groupRef, { memberCount: newMemberCount });
+
+      // Eliminar el grupo de userGroups del usuario
+      await set(ref(db, `userGroups/${currentUser.uid}/${friendId}`), null);
+
+      // Enviar mensaje de sistema
+      const leaveMessage = {
+        text: `${currentUser.name} abandonó el grupo`,
+        senderId: currentUser.uid,
+        senderName: "Sistema",
+        senderPhoto: null,
+        timestamp: Date.now(),
+        type: "system",
+        read: {},
+      };
+      await push(ref(db, `chats/${friendId}/messages`), leaveMessage);
+
+      alert("Has salido del grupo");
+      onBack();
+    } catch (error) {
+      console.error("Error leaving group:", error);
+      alert("Error al salir del grupo");
+    }
+  };
+
   if (!friendId) {
     return (
       <div className="flex items-center justify-center h-full bg-[#18191A]">
@@ -576,6 +709,7 @@ export default function ChatWindow({
   return (
     <div className="flex flex-col h-full min-h-0 bg-[#18191A] relative overflow-hidden">
       {/* Header - fijo arriba */}
+      {/* Header - fijo arriba */}
       <div className="flex-shrink-0 flex items-center gap-3 p-3 border-b border-[#3E4042] bg-[#242526] z-10">
         {isMobile && (
           <button
@@ -585,9 +719,11 @@ export default function ChatWindow({
             <FaArrowLeft className="text-[#E4E6EB] text-xl" />
           </button>
         )}
+
         <Link
-          to={`/profile/${friendId}`}
+          to={isGroup ? "#" : `/profile/${friendId}`}
           className="flex items-center gap-3 flex-1"
+          onClick={(e) => isGroup && e.preventDefault()}
         >
           <div className="relative">
             <img
@@ -595,31 +731,52 @@ export default function ChatWindow({
               alt={friendName}
               className="w-10 h-10 rounded-full object-cover"
             />
-            {status === "online" && (
+            {!isGroup && status === "online" && (
               <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-[#242526] animate-pulse"></span>
             )}
           </div>
           <div className="flex-1">
             <h3 className="font-semibold text-[#E4E6EB]">{friendName}</h3>
-            <p
-              className={`text-xs ${friendIsTyping ? "text-[#2e9b4f] animate-pulse" : status === "online" ? "text-green-500" : "text-gray-400"}`}
-            >
-              {friendIsTyping
-                ? "✍️ Escribiendo..."
-                : status === "online"
-                  ? "En línea"
-                  : statusText}
+            <p className="text-xs text-gray-400">
+              {isGroup
+                ? `${groupMembers.length} miembros`
+                : friendIsTyping
+                  ? "✍️ Escribiendo..."
+                  : status === "online"
+                    ? "En línea"
+                    : statusText}
             </p>
           </div>
         </Link>
+
         <button
           onClick={handleIniciarLlamada}
           className="p-2 hover:bg-[#3A3B3C] rounded-full transition-colors"
+          disabled={isGroup}
         >
           <FaPhone
-            className={`text-lg ${enLlamada ? "text-green-500" : "text-[#2e9b4f]"}`}
+            className={`text-lg ${enLlamada ? "text-green-500" : isGroup ? "text-gray-500" : "text-[#2e9b4f]"}`}
           />
         </button>
+
+        {isGroup && (
+          <>
+            <button
+              onClick={() => setShowAddMemberModal(true)}
+              className="p-2 hover:bg-[#3A3B3C] rounded-full transition-colors"
+              title="Agregar miembros"
+            >
+              <FaUserPlus className="text-[#2e9b4f] text-lg" />
+            </button>
+            <button
+              onClick={leaveGroup}
+              className="p-2 hover:bg-red-500/20 rounded-full transition-colors"
+              title="Salir del grupo"
+            >
+              <FaSignOutAlt className="text-red-500 text-lg" />
+            </button>
+          </>
+        )}
       </div>
 
       {/* Mensajes - scrollable, no se empuja */}
@@ -670,6 +827,13 @@ export default function ChatWindow({
                       className="rounded-2xl max-w-full max-h-60 object-cover cursor-pointer hover:opacity-90 transition"
                       onClick={() => setPreviewImage(msg.imageUrl)}
                     />
+                  </div>
+                )}
+                {msg.type === "system" && (
+                  <div className="flex justify-center my-2">
+                    <div className="bg-gray-700/50 text-gray-400 text-xs px-3 py-1 rounded-full">
+                      {msg.text}
+                    </div>
                   </div>
                 )}
                 {msg.type === "audio" && msg.audioUrl && (
@@ -1037,6 +1201,24 @@ export default function ChatWindow({
         <ImagePreviewModal
           imageUrl={previewImage}
           onClose={() => setPreviewImage(null)}
+        />
+      )}
+
+      {/* Modal para agregar miembros */}
+      {showAddMemberModal && (
+        <AddMemberModal
+          isOpen={showAddMemberModal}
+          onClose={() => setShowAddMemberModal(false)}
+          currentUser={currentUser}
+          groupId={friendId}
+          groupName={friendName}
+          groupPhoto={friendPhoto}
+          currentMembers={groupMembers}
+          onMemberAdded={(newMembers) => {
+            // Actualizar la lista de miembros localmente
+            setGroupMembers((prev) => [...prev, ...newMembers]);
+            setShowAddMemberModal(false);
+          }}
         />
       )}
     </div>

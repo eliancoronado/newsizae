@@ -13,22 +13,31 @@ export default function Chat({
   setSelectedFriend,
 }) {
   const handleSelectChat = async (
-    friendId,
-    friendName,
-    friendPhoto,
-    friendStatus,
+    chatId,
+    chatName,
+    chatPhoto,
+    chatStatus,
     openVideo = null,
+    isGroup = false,
   ) => {
-    // Marcar mensajes como leídos antes de abrir el chat
-    const userChatRef = ref(db, `userChats/${currentUser.uid}/${friendId}`);
-    await update(userChatRef, { unreadCount: 0 });
-    // 🔥 Forzar un pequeño retraso para que Firebase procese el cambio
-    setTimeout(() => {
-      setSelectedFriend({ friendId, friendName, friendPhoto, friendStatus });
-    }, 150);
-    if (openVideo) {
-      localStorage.setItem("openSharedVideo", JSON.stringify(openVideo));
+    if (isGroup) {
+      // ✅ Para grupos, actualizar userGroups en lugar de userChats
+      const userGroupRef = ref(db, `userGroups/${currentUser.uid}/${chatId}`);
+      await update(userGroupRef, { unreadCount: 0 });
+    } else {
+      const userChatRef = ref(db, `userChats/${currentUser.uid}/${chatId}`);
+      await update(userChatRef, { unreadCount: 0 });
     }
+
+    setTimeout(() => {
+      setSelectedFriend({
+        friendId: chatId,
+        friendName: chatName,
+        friendPhoto: chatPhoto,
+        friendStatus: chatStatus,
+        isGroup,
+      });
+    }, 150);
   };
 
   const handleOpenChat = (friend) => {
@@ -61,6 +70,7 @@ export default function Chat({
             friendStatus={selectedFriend?.friendStatus}
             onBack={handleBack}
             isMobile={false}
+            isGroup={selectedFriend?.isGroup === true} // ✅ Asegurar booleano
           />
         </div>
       </div>
@@ -82,6 +92,7 @@ export default function Chat({
             friendStatus={selectedFriend.friendStatus}
             onBack={handleBack}
             isMobile={true}
+            isGroup={selectedFriend?.isGroup === true} // ✅ Asegurar booleano
           />
         )}
       </div>

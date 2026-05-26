@@ -345,7 +345,11 @@ export default function Dashboard() {
   useEffect(() => {
     if (user) {
       const unsubscribe = setupMessageListener();
-      return () => unsubscribe && unsubscribe();
+      return () => {
+        if (unsubscribe && typeof unsubscribe === "function") {
+          unsubscribe();
+        }
+      };
     }
   }, [user, isInChat, isChatOpen]);
 
@@ -360,12 +364,27 @@ export default function Dashboard() {
   }, [user?.uid]);
 
   const handleNotificationPress = (notif) => {
-    setSelectedFriend({
-      friendId: notif.friendId,
-      friendName: notif.senderName,
-      friendPhoto: notif.senderPhoto,
-      friendStatus: "online",
-    });
+    console.log("🔔 Notificación:", notif);
+
+    if (notif.isGroup) {
+      // Para grupos
+      setSelectedFriend({
+        friendId: notif.friendId,
+        friendName: notif.groupName,
+        friendPhoto: notif.groupPhoto,
+        friendStatus: "online",
+        isGroup: true,
+      });
+    } else {
+      // Para chats privados
+      setSelectedFriend({
+        friendId: notif.friendId,
+        friendName: notif.senderName,
+        friendPhoto: notif.senderPhoto,
+        friendStatus: "online",
+        isGroup: false,
+      });
+    }
     setActiveTab("messages");
     setNotification(null);
   };
@@ -373,21 +392,22 @@ export default function Dashboard() {
   const setupMessageListener = () => {
     if (!user) return;
 
+    // Escuchar tanto chats privados como grupos
     const userChatsRef = ref(db, `userChats/${user.uid}`);
+    const userGroupsRef = ref(db, `userGroups/${user.uid}`);
 
-    return onValue(userChatsRef, async (snapshot) => {
-      const data = snapshot.val();
+    const handleNewMessage = async (data, isGroup = false) => {
       if (!data) return;
 
       let latestChat = null;
       let latestTime = 0;
 
-      Object.entries(data).forEach(([friendId, chat]) => {
+      Object.entries(data).forEach(([chatId, chat]) => {
         const lastTime = chat.lastMessageTime || 0;
         const unreadCount = chat.unreadCount || 0;
         if (unreadCount > 0 && lastTime > latestTime) {
           latestTime = lastTime;
-          latestChat = { friendId, ...chat };
+          latestChat = { chatId, ...chat, isGroup };
         }
       });
 
@@ -402,44 +422,138 @@ export default function Dashboard() {
         lastMessageTimeRef.current = latestTime;
 
         try {
-          const chatId = [user.uid, latestChat.friendId].sort().join("_");
-          const messagesRef = ref(db, `chats/${chatId}/messages`);
-          const messagesSnapshot = await get(messagesRef);
-          const messages = messagesSnapshot.val();
-          if (messages) {
-            let lastMessage = null;
-            let lastMessageTimestamp = 0;
-            Object.values(messages).forEach((msg) => {
-              if (
-                msg.timestamp > lastMessageTimestamp &&
-                msg.senderId !== user.uid
-              ) {
-                lastMessageTimestamp = msg.timestamp;
-                lastMessage = msg;
+          let chatId = latestChat.chatId;
+          let senderName = "";
+          let senderPhoto = "";
+          let groupName = "";
+          let groupPhoto = "";
+          let messageText = "";
+
+          if (isGroup) {
+            // Para grupos: obtener información del grupo y el último mensaje
+            groupName = latestChat.groupName || "Grupo";
+            groupPhoto =
+              latestChat.groupPhoto || "https://via.placeholder.com/40";
+
+            const messagesRef = ref(db, `chats/${chatId}/messages`);
+            const messagesSnapshot = await get(messagesRef);
+            const messages = messagesSnapshot.val();
+
+            if (messages) {
+              let lastMessageTimestamp = 0;
+              let lastMessageObj = null;
+
+              Object.values(messages).forEach((msg) => {
+                if (
+                  msg.timestamp > lastMessageTimestamp &&
+                  msg.senderId !== user.uid
+                ) {
+                  lastMessageTimestamp = msg.timestamp;
+                  lastMessageObj = msg;
+                }
+              });
+
+              if (lastMessageObj) {
+                senderName = lastMessageObj.senderName || "Alguien";
+                senderPhoto =
+                  lastMessageObj.senderPhoto ||
+                  "https://via.placeholder.com/40";
+                messageText = lastMessageObj.text || "";
               }
-            });
-            if (lastMessage) {
-              const date = new Date(lastMessage.timestamp);
-              const time = date.toLocaleTimeString([], {
+            }
+
+            // Si no se encontró mensaje, usar datos del grupo
+            if (!messageText) {
+              messageText = latestChat.lastMessage || "Nuevo mensaje";
+            }
+
+            setNotification({
+              friendId: chatId,
+              senderName: senderName,
+              senderPhoto: senderPhoto,
+              groupName: groupName,
+              groupPhoto: groupPhoto,
+              message: messageText,
+              messageType: "text",
+              time: new Date(latestTime).toLocaleTimeString([], {
                 hour: "2-digit",
                 minute: "2-digit",
-              });
-              setNotification({
-                friendId: latestChat.friendId,
-                senderName: latestChat.userName || "Alguien",
-                senderPhoto:
-                  latestChat.userPhoto || "https://via.placeholder.com/50",
-                message: lastMessage.text || "",
-                messageType: lastMessage.type || "text",
-                time: time,
-              });
+              }),
+              isGroup: true,
+            });
+          } else {
+            // Para chats privados - extraer el UID real del amigo
+            let realFriendId = chatId;
+
+            // Si chatId contiene "_", probablemente es el chatId ordenado
+            if (chatId.includes("_")) {
+              const parts = chatId.split("_");
+              realFriendId = parts[0] === user.uid ? parts[1] : parts[0];
             }
+
+            // Para chats privados
+            const chatIdSorted = [user.uid, chatId].sort().join("_");
+            const messagesRef = ref(db, `chats/${chatIdSorted}/messages`);
+            const messagesSnapshot = await get(messagesRef);
+            const messages = messagesSnapshot.val();
+
+            if (messages) {
+              let lastMessageTimestamp = 0;
+              let lastMessageObj = null;
+
+              Object.values(messages).forEach((msg) => {
+                if (
+                  msg.timestamp > lastMessageTimestamp &&
+                  msg.senderId !== user.uid
+                ) {
+                  lastMessageTimestamp = msg.timestamp;
+                  lastMessageObj = msg;
+                }
+              });
+
+              if (lastMessageObj) {
+                messageText = lastMessageObj.text || "";
+              }
+            }
+
+            if (!messageText) {
+              messageText = latestChat.lastMessage || "Nuevo mensaje";
+            }
+
+            setNotification({
+              friendId: realFriendId,
+              senderName: latestChat.userName || "Alguien",
+              senderPhoto:
+                latestChat.userPhoto || "https://via.placeholder.com/40",
+              message: messageText,
+              messageType: "text",
+              time: new Date(latestTime).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+              isGroup: false,
+            });
           }
         } catch (error) {
           console.error("Error getting message:", error);
         }
       }
+    };
+
+    // Escuchar ambos listeners
+    const unsubscribeChats = onValue(userChatsRef, (snapshot) => {
+      handleNewMessage(snapshot.val(), false);
     });
+
+    const unsubscribeGroups = onValue(userGroupsRef, (snapshot) => {
+      handleNewMessage(snapshot.val(), true);
+    });
+
+    // Devolver función para limpiar ambos listeners
+    return () => {
+      unsubscribeChats();
+      unsubscribeGroups();
+    };
   };
 
   const playNotificationSound = () => {
