@@ -25,6 +25,8 @@ import { FaUserPlus } from "react-icons/fa"; // Si no está ya importado
 import { useAgoraCall } from "../hooks/useAgoraCall";
 import AgoraCallUI from "./AgoraCallUI";
 import AgoraLlamadaEntrante from "./AgoraLlamadaEntrante";
+// Agregar después de los otros imports
+import ConferenceCall from "./ConferenceCall";
 
 export default function ChatWindow({
   currentUser,
@@ -69,6 +71,10 @@ export default function ChatWindow({
 
   // Agrega este estado después de los otros estados (cerca de línea ~50)
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+
+  const [showConferenceModal, setShowConferenceModal] = useState(false);
+  const [conferenceRoomId, setConferenceRoomId] = useState(null);
+  const [conferenceMode, setConferenceMode] = useState("join");
 
   // Scroll al final cuando hay nuevos mensajes
   useEffect(() => {
@@ -199,6 +205,14 @@ export default function ChatWindow({
     const userGroupRef = ref(db, `userGroups/${currentUser.uid}/${friendId}`);
     update(userGroupRef, { unreadCount: 0 });
   }, [friendId, isGroup, currentUser.uid]);
+
+  const handleConferenceInvite = (message) => {
+    if (message.type === "conference_invite" && message.conferenceData) {
+      setConferenceRoomId(message.conferenceData.roomId);
+      setConferenceMode("join");
+      setShowConferenceModal(true);
+    }
+  };
 
   // Manejar respuesta a un mensaje
   const handleReply = (message) => {
@@ -813,6 +827,54 @@ export default function ChatWindow({
                     />
                   </div>
                 )}
+                // Dentro del map de messages, después de la condición para
+                "system" (cerca de línea 420)
+                {msg.type === "conference_invite" && msg.conferenceData && (
+                  <div className="mb-1">
+                    <div
+                      onClick={() => handleConferenceInvite(msg)}
+                      className="bg-gradient-to-r from-green-500/20 to-blue-500/20 rounded-2xl p-3 cursor-pointer hover:shadow-lg transition border border-green-500/50"
+                    >
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={
+                            msg.conferenceData.inviterPhoto ||
+                            "https://via.placeholder.com/40"
+                          }
+                          alt={msg.conferenceData.inviter}
+                          className="w-10 h-10 rounded-full object-cover"
+                        />
+                        <div className="flex-1">
+                          <p className="text-white font-semibold text-sm">
+                            {msg.conferenceData.inviter} te invitó a una
+                            conferencia
+                          </p>
+                          <p className="text-green-400 text-xs font-mono">
+                            Room ID: {msg.conferenceData.roomId}
+                          </p>
+                        </div>
+                        <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                          <svg
+                            className="w-5 h-5 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M15 10l4.5-4.5M15 10l-4.5 4.5M15 10H5m0 0v8a2 2 0 002 2h10a2 2 0 002-2v-8"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+                      <p className="text-gray-300 text-sm mt-2 text-center">
+                        📞 Haz clic para unirte a la conferencia
+                      </p>
+                    </div>
+                  </div>
+                )}
                 {msg.type === "system" && (
                   <div className="flex justify-center my-2">
                     <div className="bg-gray-700/50 text-gray-400 text-xs px-3 py-1 rounded-full">
@@ -1169,6 +1231,18 @@ export default function ChatWindow({
           }}
         />
       )}
+
+      {/* Modal de conferencia */}
+      <ConferenceCall
+        isOpen={showConferenceModal}
+        onClose={() => {
+          setShowConferenceModal(false);
+          setConferenceRoomId(null);
+        }}
+        currentUser={currentUser}
+        roomId={conferenceRoomId}
+        mode={conferenceMode}
+      />
     </div>
   );
 }

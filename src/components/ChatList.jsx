@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { ref, onValue, off } from "firebase/database";
 import { db } from "../firebase";
-import { FaSearch, FaComment, FaUserFriends } from "react-icons/fa";
+import { FaSearch, FaComment, FaUserFriends, FaPhone } from "react-icons/fa";
 import { FaPlus, FaUsers } from "react-icons/fa";
 import CreateGroupModal from "./CreateGroupModal";
 
@@ -16,6 +16,18 @@ export default function ChatList({
   const [searchTerm, setSearchTerm] = useState("");
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
   const [groups, setGroups] = useState([]);
+  const [showConferenceModal, setShowConferenceModal] = useState(false);
+  const [conferenceMode, setConferenceMode] = useState("create");
+
+  useEffect(() => {
+    const handleOpenConference = (e) => {
+      setConferenceMode(e.detail.mode);
+      setShowConferenceModal(true);
+    };
+    window.addEventListener("openConference", handleOpenConference);
+    return () =>
+      window.removeEventListener("openConference", handleOpenConference);
+  }, []);
 
   useEffect(() => {
     if (!currentUser?.uid) return;
@@ -111,6 +123,19 @@ export default function ChatList({
             className="w-11 h-11 rounded-full bg-[#1a1a1a] hover:bg-[#2a2a2a] flex items-center justify-center transition-all duration-200 active:scale-95"
           >
             <FaPlus className="text-[#25D366] text-xl" />
+          </button>
+          <button
+            onClick={() => {
+              // Abrir modal de conferencia en modo crear
+              window.dispatchEvent(
+                new CustomEvent("openConference", {
+                  detail: { mode: "create" },
+                }),
+              );
+            }}
+            className="w-11 h-11 rounded-full bg-[#1a1a1a] hover:bg-[#2a2a2a] flex items-center justify-center transition-all duration-200 active:scale-95 ml-2"
+          >
+            <FaPhone className="text-[#25D366] text-xl" />
           </button>
         </div>
 
@@ -261,6 +286,13 @@ export default function ChatList({
             { onlyOnce: true },
           );
         }}
+      />
+
+      <ConferenceCall
+        isOpen={showConferenceModal}
+        onClose={() => setShowConferenceModal(false)}
+        currentUser={currentUser}
+        mode={conferenceMode}
       />
     </div>
   );
