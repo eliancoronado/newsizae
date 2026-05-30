@@ -93,20 +93,6 @@ export default function ChatWindow({
     console.log("Llamada terminada");
   });
 
-  const handleIniciarLlamada = () => {
-    const auth = getAuth();
-    if (!auth.currentUser) {
-      alert("Debes estar autenticado para llamar");
-      return;
-    }
-    if (!currentUser?.uid || !friendId) {
-      alert("Error: No se pudo identificar al usuario");
-      return;
-    }
-    iniciarLlamada(currentUser.name);
-    setShowCallPanel(false);
-  };
-
   const handleTyping = () => {
     if (!friendId) return;
     const typingRef = ref(
