@@ -15,9 +15,6 @@ import {
 } from "react-icons/fa";
 import { getAuth } from "firebase/auth";
 import { sendPushNotification } from "../utils/notifications";
-import LlamadaUI from "./LlamadaUI";
-import { useWebRTC } from "../hooks/useWebRTC";
-import LlamadaEntrante from "./LlamadaEntrante";
 import StickerPicker from "./StickerPicker";
 import ImagePicker from "./ImagePicker";
 import { uploadToS3 } from "../utils/uploadToS3SDK";
@@ -25,6 +22,9 @@ import ImagePreviewModal from "./ImagePreviewModal";
 // Agrega esta importación al inicio del archivo
 import AddMemberModal from "./AddMemberModal";
 import { FaUserPlus } from "react-icons/fa"; // Si no está ya importado
+import { useAgoraCall } from "../hooks/useAgoraCall";
+import AgoraCallUI from "./AgoraCallUI";
+import AgoraLlamadaEntrante from "./AgoraLlamadaEntrante";
 
 export default function ChatWindow({
   currentUser,
@@ -78,20 +78,19 @@ export default function ChatWindow({
   }, [messages]);
 
   const {
-    iniciarLlamada,
-    aceptarLlamada,
-    colgarLlamada,
-    enLlamada,
-    llamando,
-    llamadaEntrante,
-    localStream,
-    remoteStream,
-    isVideoEnabled,
+    incomingCall,
+    activeCall,
+    isCalling,
+    callDuration,
     isAudioEnabled,
-    toggleVideo,
+    startCall,
+    acceptCall,
+    rejectCall,
+    endCall,
     toggleAudio,
-  } = useWebRTC(currentUser.uid, friendId, () => {
-    setShowCallPanel(false);
+  } = useAgoraCall(currentUser.uid, friendId, friendName, () => {
+    // onCallEnd callback (opcional)
+    console.log("Llamada terminada");
   });
 
   const handleIniciarLlamada = () => {
@@ -750,12 +749,12 @@ export default function ChatWindow({
         </Link>
 
         <button
-          onClick={handleIniciarLlamada}
+          onClick={startCall}
           className="p-2 hover:bg-[#3A3B3C] rounded-full transition-colors"
           disabled={isGroup}
         >
           <FaPhone
-            className={`text-lg ${enLlamada ? "text-green-500" : isGroup ? "text-gray-500" : "text-[#2e9b4f]"}`}
+            className={`text-lg ${activeCall ? "text-green-500" : isGroup ? "text-gray-500" : "text-[#2e9b4f]"}`}
           />
         </button>
 
@@ -1150,57 +1149,21 @@ export default function ChatWindow({
         />
       )}
 
-      <LlamadaEntrante
-        llamadaEntrante={llamadaEntrante}
-        onAceptar={aceptarLlamada}
-        onRechazar={colgarLlamada}
-        nombreCreador={llamadaEntrante?.creadorNombre || ""}
+      {/* Modal de llamada entrante */}
+      <AgoraLlamadaEntrante
+        incomingCall={incomingCall}
+        onAccept={acceptCall}
+        onReject={rejectCall}
       />
 
-      {showCallPanel && !enLlamada && !llamando && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-          <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-80">
-            <div className="text-center mb-4">
-              <h3 className="text-white text-xl">Llamar a {friendName}</h3>
-            </div>
-            <div className="flex gap-4">
-              <button
-                onClick={handleIniciarLlamada}
-                className="bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-full flex-1"
-              >
-                Llamar
-              </button>
-              <button
-                onClick={() => setShowCallPanel(false)}
-                className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-full flex-1"
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {(llamando || enLlamada) && (
-        <LlamadaUI
-          enLlamada={enLlamada}
-          llamando={llamando}
-          colgarLlamada={colgarLlamada}
+      {/* Pantalla de llamada activa */}
+      {(activeCall || isCalling) && (
+        <AgoraCallUI
           otroUsuarioNombre={friendName}
-          localStream={localStream}
-          remoteStream={remoteStream}
-          isVideoEnabled={isVideoEnabled}
+          callDuration={callDuration}
           isAudioEnabled={isAudioEnabled}
-          toggleVideo={toggleVideo}
           toggleAudio={toggleAudio}
-          onClose={() => {}}
-        />
-      )}
-
-      {previewImage && (
-        <ImagePreviewModal
-          imageUrl={previewImage}
-          onClose={() => setPreviewImage(null)}
+          endCall={endCall}
         />
       )}
 
