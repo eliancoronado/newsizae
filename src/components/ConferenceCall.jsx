@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { ref, push, set, get, update } from "firebase/database";
+import { ref, push, set, get, update, onValue, off } from "firebase/database";
 import { db } from "../firebase";
 import AgoraRTC from "agora-rtc-sdk-ng";
 import {
@@ -13,14 +13,14 @@ import {
   FaCheck,
 } from "react-icons/fa";
 
-const appId = "36bb337ed3fd4f8a9d9f32e1ebc67807"; // Reemplaza con tu App ID
+const appId = "36bb337ed3fd4f8a9d9f32e1ebc67807";
 
 export default function ConferenceCall({
   isOpen,
   onClose,
   currentUser,
   roomId: externalRoomId = null,
-  mode = "join", // "create" o "join"
+  mode = "join",
 }) {
   const [roomId, setRoomId] = useState(externalRoomId || "");
   const [inputRoomId, setInputRoomId] = useState("");
@@ -37,8 +37,8 @@ export default function ConferenceCall({
   const rtcClient = useRef(null);
   const localAudioTrack = useRef(null);
   const remoteAudioTracks = useRef({});
+  const participantsListenerRef = useRef(null);
 
-  // Generar roomId al crear
   const generateRoomId = () => {
     const newId = Math.random().toString(36).substring(2, 10).toUpperCase();
     setRoomId(newId);
@@ -51,7 +51,34 @@ export default function ConferenceCall({
     }
   }, [step]);
 
-  // Iniciar llamada
+  // Escuchar cambios en participantes de Firebase
+  const listenToParticipants = (finalRoomId) => {
+    if (participantsListenerRef.current) {
+      off(participantsListenerRef.current);
+    }
+
+    const participantsRef = ref(db, `activeCalls/${finalRoomId}/participants`);
+    participantsListenerRef.current = participantsRef;
+
+    onValue(participantsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const participantsList = Object.entries(data).map(
+          ([uid, participant]) => ({
+            uid: uid,
+            name: participant.name,
+            photo: participant.photo,
+            email: participant.email,
+            joinedAt: participant.joinedAt,
+          }),
+        );
+        setParticipants(participantsList);
+      } else {
+        setParticipants([]);
+      }
+    });
+  };
+
   const startCall = async () => {
     const finalRoomId = step === "create" ? roomId : inputRoomId;
     if (!finalRoomId) return;
@@ -84,14 +111,10 @@ export default function ConferenceCall({
         joinedAt: Date.now(),
       });
 
-      setParticipants([
-        {
-          uid: currentUser.uid,
-          name: currentUser.name,
-          photo: currentUser.picture,
-          email: currentUser.email,
-        },
-      ]);
+      // Escuchar cambios en participantes
+      listenToParticipants(finalRoomId);
+
+      setRoomId(finalRoomId);
       setInCall(true);
     } catch (error) {
       console.error("Error starting call:", error);
@@ -100,12 +123,9 @@ export default function ConferenceCall({
   };
 
   const handleUserJoined = async (user) => {
-    // Obtener datos del usuario desde Firebase
-    const userRef = ref(db, `activeCalls/${roomId}/participants/${user.uid}`);
-    const snapshot = await get(userRef);
-    if (snapshot.exists()) {
-      setParticipants((prev) => [...prev, snapshot.val()]);
-    }
+    // El evento user-joined de Agora no siempre tiene los datos del usuario
+    // Los datos ya se actualizan automáticamente por el listener de Firebase
+    console.log("User joined from Agora:", user.uid);
   };
 
   const handleUserPublished = async (user, mediaType) => {
@@ -118,10 +138,16 @@ export default function ConferenceCall({
 
   const handleUserLeft = async (user) => {
     delete remoteAudioTracks.current[user.uid];
-    setParticipants((prev) => prev.filter((p) => p.uid !== user.uid));
+    // El listener de Firebase actualizará automáticamente los participantes
   };
 
   const endCall = async () => {
+    // Dejar de escuchar participantes
+    if (participantsListenerRef.current) {
+      off(participantsListenerRef.current);
+      participantsListenerRef.current = null;
+    }
+
     if (localAudioTrack.current) {
       localAudioTrack.current.stop();
       localAudioTrack.current.close();
@@ -152,7 +178,6 @@ export default function ConferenceCall({
     }
   };
 
-  // Cargar amigos para invitar
   const loadFriends = async () => {
     const friendsRef = ref(db, `users/${currentUser.uid}/friends`);
     const snapshot = await get(friendsRef);
@@ -180,7 +205,6 @@ export default function ConferenceCall({
     }
   }, [showInviteModal]);
 
-  // Enviar invitación por mensaje
   const sendInvites = async () => {
     if (selectedFriends.length === 0) return;
 
@@ -208,7 +232,6 @@ export default function ConferenceCall({
         const messagesRef = ref(db, `chats/${chatId}/messages`);
         await push(messagesRef, inviteMessage);
 
-        // Actualizar último mensaje
         await update(ref(db, `chats/${chatId}`), {
           lastMessage: {
             text: "📞 Te invito a una conferencia de video",
@@ -217,7 +240,6 @@ export default function ConferenceCall({
           },
         });
 
-        // Actualizar userChats
         await update(ref(db, `userChats/${friend.uid}/${currentUser.uid}`), {
           lastMessage: "📞 Te invito a una conferencia de video",
           lastMessageTime: Date.now(),
@@ -260,9 +282,17 @@ export default function ConferenceCall({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Limpiar listener al cerrar el componente
+  useEffect(() => {
+    return () => {
+      if (participantsListenerRef.current) {
+        off(participantsListenerRef.current);
+      }
+    };
+  }, []);
+
   if (!isOpen) return null;
 
-  // Modal de entrada (crear/unirse)
   if (!inCall) {
     return (
       <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 animate-fadeIn">
@@ -359,10 +389,8 @@ export default function ConferenceCall({
     );
   }
 
-  // Pantalla de conferencia activa (estilo Cisco Webex)
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-gray-900 to-black z-50 flex flex-col">
-      {/* Header */}
       <div className="flex-shrink-0 bg-black/50 backdrop-blur-md px-6 py-4 flex justify-between items-center border-b border-gray-800">
         <div className="flex items-center gap-3">
           <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
@@ -370,6 +398,9 @@ export default function ConferenceCall({
           <code className="bg-gray-800 px-2 py-1 rounded text-xs text-green-400 font-mono">
             ID: {roomId}
           </code>
+          <span className="text-gray-400 text-xs">
+            ({participants.length} participantes)
+          </span>
         </div>
         <div className="flex gap-2">
           <button
@@ -401,34 +432,51 @@ export default function ConferenceCall({
         </div>
       </div>
 
-      {/* Grid de participantes estilo Webex */}
       <div className="flex-1 overflow-y-auto p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {participants.map((p) => (
-            <div
-              key={p.uid}
-              className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-4 flex flex-col items-center border border-gray-700 hover:border-green-500/50 transition"
-            >
-              <div className="relative">
-                <img
-                  src={p.photo || "https://via.placeholder.com/100"}
-                  alt={p.name}
-                  className="w-24 h-24 rounded-full object-cover border-4 border-green-500"
-                />
-                <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 rounded-full border-2 border-gray-800"></div>
+        {participants.length === 0 ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <div className="w-20 h-20 rounded-full bg-gray-800 flex items-center justify-center mx-auto mb-4">
+                <FaMicrophone className="text-gray-500 text-3xl" />
               </div>
-              <h3 className="text-white font-semibold mt-3">{p.name}</h3>
-              <p className="text-gray-400 text-xs">{p.email}</p>
-              <div className="flex items-center gap-1 mt-2">
-                <FaMicrophone className="text-green-400 text-xs" />
-                <span className="text-gray-400 text-xs">Conectado</span>
-              </div>
+              <p className="text-gray-400">Esperando participantes...</p>
+              <p className="text-gray-500 text-sm mt-2">
+                Comparte el Room ID para que se unan
+              </p>
             </div>
-          ))}
-        </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {participants.map((p) => (
+              <div
+                key={p.uid}
+                className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-4 flex flex-col items-center border border-gray-700 hover:border-green-500/50 transition"
+              >
+                <div className="relative">
+                  <img
+                    src={p.photo || "https://via.placeholder.com/100"}
+                    alt={p.name}
+                    className="w-24 h-24 rounded-full object-cover border-4 border-green-500"
+                  />
+                  <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 rounded-full border-2 border-gray-800"></div>
+                </div>
+                <h3 className="text-white font-semibold mt-3">
+                  {p.name}
+                  {p.uid === currentUser.uid && (
+                    <span className="ml-2 text-xs text-green-400">(Tú)</span>
+                  )}
+                </h3>
+                <p className="text-gray-400 text-xs">{p.email}</p>
+                <div className="flex items-center gap-1 mt-2">
+                  <FaMicrophone className="text-green-400 text-xs" />
+                  <span className="text-gray-400 text-xs">Conectado</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Barra de control inferior */}
       <div className="flex-shrink-0 bg-black/50 backdrop-blur-md px-6 py-4 flex justify-center gap-4 border-t border-gray-800">
         <button
           onClick={toggleAudio}
@@ -454,7 +502,6 @@ export default function ConferenceCall({
         </button>
       </div>
 
-      {/* Modal de invitación */}
       {showInviteModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50">
           <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
