@@ -139,6 +139,7 @@ export function useAgoraCall(
       console.log("📦 CALLS DATA:", data);
 
       if (!data) {
+        console.log("❌ NO HAY DATA");
         setIncomingCall(null);
         return;
       }
@@ -164,10 +165,10 @@ export function useAgoraCall(
       setIncomingCall(found); // null si no encontró nada → limpia el modal
     };
 
-    const unsubscribe = onValue(callsRef, handler);
+   onValue(callsRef, handler);
     return () => {
       console.log("👂 [Calls] Dejando de escuchar llamadas");
-      unsubscribe();
+      off(callsRef, "value", handler);
     };
   }, [currentUserId]);
 
