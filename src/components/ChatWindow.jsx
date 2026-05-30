@@ -88,8 +88,7 @@ export default function ChatWindow({
     rejectCall,
     endCall,
     toggleAudio,
-  } = useAgoraCall(currentUser.uid, friendId, friendName, () => {
-    // onCallEnd callback (opcional)
+  } = useAgoraCall(currentUser.uid, currentUser.name, friendId, () => {
     console.log("Llamada terminada");
   });
 
