@@ -5,6 +5,7 @@ import { db } from "../firebase";
 import { FaSearch, FaComment, FaUserFriends, FaPhone } from "react-icons/fa";
 import { FaPlus, FaUsers } from "react-icons/fa";
 import CreateGroupModal from "./CreateGroupModal";
+import ConferenceCall from "./ConferenceCall";
 
 export default function ChatList({
   currentUser,
