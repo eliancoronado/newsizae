@@ -427,26 +427,6 @@ export default function ConferenceCall({
           >
             <FaUserPlus /> Invitar
           </button>
-          <button
-            onClick={toggleAudio}
-            className={`p-2 rounded-xl transition ${
-              isAudioEnabled
-                ? "bg-gray-700 hover:bg-gray-600"
-                : "bg-red-600 hover:bg-red-700"
-            }`}
-          >
-            {isAudioEnabled ? (
-              <FaMicrophone className="text-white" />
-            ) : (
-              <FaMicrophoneSlash className="text-white" />
-            )}
-          </button>
-          <button
-            onClick={endCall}
-            className="p-2 bg-red-600 hover:bg-red-700 rounded-xl transition"
-          >
-            <FaPhoneSlash className="text-white" />
-          </button>
         </div>
       </div>
 
