@@ -9,6 +9,7 @@ import {
   FaShare,
   FaUserPlus,
   FaCopy,
+  FaVideo,
   FaCheck,
 } from "react-icons/fa";
 

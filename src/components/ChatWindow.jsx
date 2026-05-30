@@ -827,8 +827,6 @@ export default function ChatWindow({
                     />
                   </div>
                 )}
-                // Dentro del map de messages, después de la condición para
-                "system" (cerca de línea 420)
                 {msg.type === "conference_invite" && msg.conferenceData && (
                   <div className="mb-1">
                     <div
