@@ -75,6 +75,7 @@ export default function ChatWindow({
   const [showConferenceModal, setShowConferenceModal] = useState(false);
   const [conferenceRoomId, setConferenceRoomId] = useState(null);
   const [conferenceMode, setConferenceMode] = useState("join");
+  const [autoJoinConference, setAutoJoinConference] = useState(false);
 
   // Scroll al final cuando hay nuevos mensajes
   useEffect(() => {
@@ -210,6 +211,7 @@ export default function ChatWindow({
     if (message.type === "conference_invite" && message.conferenceData) {
       setConferenceRoomId(message.conferenceData.roomId);
       setConferenceMode("join");
+       setAutoJoinConference(true); // Marcar que queremos unión automática
       setShowConferenceModal(true);
     }
   };
@@ -1240,6 +1242,7 @@ export default function ChatWindow({
         currentUser={currentUser}
         roomId={conferenceRoomId}
         mode={conferenceMode}
+        autoJoin={autoJoinConference} // Nueva prop
       />
     </div>
   );

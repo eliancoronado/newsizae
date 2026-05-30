@@ -21,6 +21,7 @@ export default function ConferenceCall({
   currentUser,
   roomId: externalRoomId = null,
   mode = "join",
+  autoJoin = false, // Nueva prop
 }) {
   const [roomId, setRoomId] = useState(externalRoomId || "");
   const [inputRoomId, setInputRoomId] = useState("");
@@ -44,6 +45,19 @@ export default function ConferenceCall({
     setRoomId(newId);
     setInputRoomId(newId);
   };
+
+  // Auto-join cuando viene de una invitación
+  useEffect(() => {
+    if (autoJoin && isOpen && mode === "join" && externalRoomId) {
+      setInputRoomId(externalRoomId);
+      setStep("join");
+      // Pequeño delay para asegurar que el estado se actualice
+      const timer = setTimeout(() => {
+        startCall();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [autoJoin, isOpen, mode, externalRoomId]);
 
   useEffect(() => {
     if (step === "create" && !roomId) {
@@ -80,7 +94,11 @@ export default function ConferenceCall({
   };
 
   const startCall = async () => {
-    const finalRoomId = step === "create" ? roomId : inputRoomId;
+    const finalRoomId = autoJoin
+      ? externalRoomId
+      : step === "create"
+        ? roomId
+        : inputRoomId;
     if (!finalRoomId) return;
 
     try {
