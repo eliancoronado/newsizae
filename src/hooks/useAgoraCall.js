@@ -136,6 +136,7 @@ export function useAgoraCall(
 
     const handler = (snapshot) => {
       const data = snapshot.val();
+      console.log("📦 CALLS DATA:", data);
 
       if (!data) {
         setIncomingCall(null);
@@ -144,6 +145,12 @@ export function useAgoraCall(
 
       let found = null;
       for (const [callId, callData] of Object.entries(data)) {
+        console.log(
+          "🔍 Revisando:",
+          callData.calleeId,
+          currentUserId,
+          callData.status,
+        );
         if (
           callData.calleeId === currentUserId &&
           callData.status === "calling"
@@ -157,10 +164,10 @@ export function useAgoraCall(
       setIncomingCall(found); // null si no encontró nada → limpia el modal
     };
 
-    onValue(callsRef, handler);
+    const unsubscribe = onValue(callsRef, handler);
     return () => {
       console.log("👂 [Calls] Dejando de escuchar llamadas");
-      off(callsRef, "value", handler);
+      unsubscribe();
     };
   }, [currentUserId]);
 
