@@ -1,5 +1,5 @@
-// hooks/useAgoraCall.js - CORREGIDO
-import { useState, useEffect, useRef, useCallback } from "react";
+// hooks/useAgoraCall.js - VERSIÓN FINAL con manejo de errores
+import { useState, useEffect, useRef } from "react";
 import AgoraRTC from "agora-rtc-sdk-ng";
 import { ref, set, onValue, update, push, off } from "firebase/database";
 import { db } from "../firebase";
@@ -12,8 +12,6 @@ export function useAgoraCall(
   friendId,
   onCallEnd,
 ) {
-  // BUGFIX #1: el hook ahora recibe currentUserName para usarlo como callerName real
-
   const [incomingCall, setIncomingCall] = useState(null);
   const [activeCall, setActiveCall] = useState(null);
   const [isCalling, setIsCalling] = useState(false);
@@ -23,25 +21,23 @@ export function useAgoraCall(
   const rtcClientRef = useRef(null);
   const callTimerRef = useRef(null);
   const currentCallIdRef = useRef(null);
-
-  // BUGFIX #2: guardar localAudioTrack en un ref además del estado,
-  // para evitar el stale closure en leaveChannel
   const localAudioTrackRef = useRef(null);
-
-  // BUGFIX #4: flag para saber si YO ya inicié el fin de la llamada,
-  // así no entro en loop cuando el otro cuelga y firebase actualiza a "ended"
   const isEndingCallRef = useRef(false);
+  // Guardar la función de unsubscribe del listener de status para poder limpiarla
+  const statusUnsubRef = useRef(null);
+
+  // ─── Agora helpers ────────────────────────────────────────────────────────
 
   const initAgoraClient = () => {
     if (rtcClientRef.current) return rtcClientRef.current;
     const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
     rtcClientRef.current = client;
-    console.log("✅ [Agora] Cliente inicializado");
+    console.log("✅ [Agora] Cliente creado");
     return client;
   };
 
   const joinChannel = async (channel) => {
-    console.log("🎧 [Agora] joinChannel llamado, canal:", channel);
+    console.log("🎧 [Agora] joinChannel →", channel);
     const client = initAgoraClient();
 
     if (
@@ -53,52 +49,40 @@ export function useAgoraCall(
     }
 
     const uid = Math.floor(Math.random() * 100000);
-    console.log("🔌 [Agora] Uniéndose al canal:", channel, "UID:", uid);
     await client.join(APP_ID, channel, null, uid);
+    console.log("✅ [Agora] Unido al canal con UID:", uid);
 
-    console.log("🎤 [Agora] Creando track de micrófono...");
     const track = await AgoraRTC.createMicrophoneAudioTrack();
     await client.publish(track);
-
-    // BUGFIX #2: guardar en ref Y en estado
     localAudioTrackRef.current = track;
     setIsAudioEnabled(true);
     console.log("✅ [Agora] Micrófono publicado");
 
     client.on("user-published", async (user, mediaType) => {
-      console.log("👤 [Agora] Usuario remoto publicó:", user.uid, mediaType);
+      console.log("👤 [Agora] Remoto publicó:", user.uid, mediaType);
       if (mediaType === "audio") {
         await client.subscribe(user, mediaType);
         user.audioTrack.play();
         console.log("🔊 [Agora] Audio remoto reproduciendo");
       }
     });
-
-    client.on("user-unpublished", (user) => {
-      console.log("🔇 [Agora] Usuario remoto dejó de publicar:", user.uid);
-    });
   };
 
-  // BUGFIX #2: leaveChannel usa el ref, no el estado (evita stale closure)
   const leaveChannel = async () => {
-    console.log("📤 [Agora] leaveChannel llamado");
+    console.log("📤 [Agora] leaveChannel");
     const client = rtcClientRef.current;
-    if (!client) {
-      console.log("⚠️ [Agora] No hay cliente, skipping");
-      return;
-    }
+    if (!client) return;
 
     const track = localAudioTrackRef.current;
     if (track) {
-      console.log("🎤 [Agora] Deteniendo track de micrófono...");
       try {
         track.stop();
         track.close();
         if (client.connectionState === "CONNECTED") {
           await client.unpublish(track);
         }
-      } catch (err) {
-        console.warn("⚠️ [Agora] Error al limpiar track:", err);
+      } catch (e) {
+        console.warn("⚠️ [Agora] Error limpiando track:", e);
       }
       localAudioTrackRef.current = null;
     }
@@ -109,86 +93,107 @@ export function useAgoraCall(
     ) {
       try {
         await client.leave();
-        console.log("👋 [Agora] Cliente desconectado del canal");
-      } catch (err) {
-        console.warn("⚠️ [Agora] Error al salir del canal:", err);
+        console.log("👋 [Agora] Salió del canal");
+      } catch (e) {
+        console.warn("⚠️ [Agora] Error saliendo del canal:", e);
       }
     }
-
     client.removeAllListeners();
   };
 
-  // Escuchar llamadas entrantes
-  useEffect(() => {
-    if (!currentUserId) {
-      console.log("⚠️ [Calls] No hay currentUserId, no se escuchan llamadas");
-      return;
-    }
+  // ─── Limpieza interna ─────────────────────────────────────────────────────
 
-    console.log("👂 [Calls] Escuchando llamadas para usuario:", currentUserId);
+  const _cleanupLocalState = () => {
+    if (callTimerRef.current) {
+      clearInterval(callTimerRef.current);
+      callTimerRef.current = null;
+    }
+    if (statusUnsubRef.current) {
+      statusUnsubRef.current();
+      statusUnsubRef.current = null;
+    }
+    setActiveCall(null);
+    setIsCalling(false);
+    setCallDuration(0);
+    currentCallIdRef.current = null;
+    isEndingCallRef.current = false;
+  };
+
+  const _startTimer = () => {
+    if (callTimerRef.current) clearInterval(callTimerRef.current);
+    callTimerRef.current = setInterval(() => {
+      setCallDuration((prev) => prev + 1);
+    }, 1000);
+  };
+
+  // ─── Escuchar llamadas entrantes ──────────────────────────────────────────
+
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    console.log("👂 [Calls] Escuchando llamadas para:", currentUserId);
     const callsRef = ref(db, "calls");
 
-    const handleSnapshot = (snapshot) => {
+    const handler = (snapshot) => {
       const data = snapshot.val();
-      console.log("📞 [Calls] Snapshot recibido:", data);
 
       if (!data) {
-        console.log("📭 [Calls] No hay llamadas activas");
-        // BUGFIX #3: si ya no hay llamadas y tenemos incomingCall, limpiarlo
         setIncomingCall(null);
         return;
       }
 
-      let foundCall = null;
+      let found = null;
       for (const [callId, callData] of Object.entries(data)) {
         if (
           callData.calleeId === currentUserId &&
           callData.status === "calling"
         ) {
-          console.log(
-            "📲 [Calls] Llamada entrante encontrada:",
-            callId,
-            callData,
-          );
-          foundCall = { callId, ...callData };
+          console.log("📲 [Calls] Llamada entrante:", callId, callData);
+          found = { callId, ...callData };
           break;
         }
       }
 
-      if (foundCall) {
-        setIncomingCall(foundCall);
-      } else {
-        // BUGFIX #3: si no hay llamada en estado "calling" para mí, limpiar
-        setIncomingCall((prev) => {
-          if (prev)
-            console.log(
-              "🗑️ [Calls] Limpiando incomingCall porque ya no está en estado 'calling'",
-            );
-          return null;
-        });
-      }
+      setIncomingCall(found); // null si no encontró nada → limpia el modal
     };
 
-    onValue(callsRef, handleSnapshot);
-
-    // BUGFIX #5: usar la función de unsubscribe correcta, no off() global
+    onValue(callsRef, handler);
     return () => {
-      console.log("👂 [Calls] Deteniendo escucha de llamadas");
-      off(callsRef, "value", handleSnapshot);
+      console.log("👂 [Calls] Dejando de escuchar llamadas");
+      off(callsRef, "value", handler);
     };
   }, [currentUserId]);
 
-  // Iniciar llamada
+  // ─── Escuchar cuando el otro cuelga (para quien aceptó) ───────────────────
+
+  const _listenForRemoteEnd = (callId) => {
+    const callStatusRef = ref(db, `calls/${callId}/status`);
+
+    const handler = async (snap) => {
+      const status = snap.val();
+      console.log("🔄 [StatusListener] status:", status);
+
+      if (status === "ended" && !isEndingCallRef.current) {
+        console.log("🏁 [StatusListener] El otro usuario colgó");
+        off(callStatusRef, "value", handler);
+        await leaveChannel();
+        _cleanupLocalState();
+        if (onCallEnd) onCallEnd();
+      }
+    };
+
+    onValue(callStatusRef, handler);
+    // Guardar para poder limpiar si el componente se desmonta
+    statusUnsubRef.current = () => off(callStatusRef, "value", handler);
+  };
+
+  // ─── Iniciar llamada ──────────────────────────────────────────────────────
+
   const startCall = async () => {
-    console.log(
-      "📞 [StartCall] Iniciando llamada de",
-      currentUserId,
-      "a",
-      friendId,
-    );
+    console.log("📞 [StartCall] De:", currentUserId, "→", friendId);
 
     if (!friendId || !currentUserId) {
-      console.error("❌ [StartCall] Faltan IDs:", { friendId, currentUserId });
+      console.error("❌ [StartCall] Faltan IDs");
       return;
     }
 
@@ -197,213 +202,194 @@ export function useAgoraCall(
     setCallDuration(0);
 
     const roomId = [currentUserId, friendId].sort().join("_");
-    console.log("🏠 [StartCall] RoomId:", roomId);
-
     const callRef = push(ref(db, "calls"));
     const callId = callRef.key;
     currentCallIdRef.current = callId;
-    console.log("🆔 [StartCall] CallId:", callId);
 
-    // BUGFIX #1: callerName usa currentUserName (el nombre del usuario que llama)
     const callData = {
       callId,
       callerId: currentUserId,
       calleeId: friendId,
-      callerName: currentUserName, // ← CORREGIDO
+      callerName: currentUserName, // nombre del que llama ← CORREGIDO
       status: "calling",
       roomId,
       createdAt: Date.now(),
     };
 
-    console.log("💾 [StartCall] Guardando en Firebase:", callData);
-    await set(callRef, callData);
-    console.log("✅ [StartCall] Guardado en Firebase");
+    console.log("💾 [StartCall] Guardando:", callData);
 
-    // Escuchar cambios de estado de esta llamada específica
-    const callStatusRef = ref(db, `calls/${callId}/status`);
-    const unsubscribeStatus = onValue(callStatusRef, async (snap) => {
-      const status = snap.val();
-      console.log("🔄 [StartCall] Status actualizado:", status);
-
-      if (status === "accepted") {
-        console.log("✅ [StartCall] Llamada ACEPTADA");
-        off(callStatusRef, "value");
-        await joinChannel(roomId);
-        setActiveCall({ callId, roomId, startTime: Date.now() });
-        setIsCalling(false);
-
-        if (callTimerRef.current) clearInterval(callTimerRef.current);
-        callTimerRef.current = setInterval(() => {
-          setCallDuration((prev) => prev + 1);
-        }, 1000);
-      } else if (status === "rejected") {
-        console.log("❌ [StartCall] Llamada RECHAZADA");
-        off(callStatusRef, "value");
-        setIsCalling(false);
-        setActiveCall(null);
-        currentCallIdRef.current = null;
-
-        // Limpiar el nodo de Firebase después de un momento
-        setTimeout(async () => {
-          await set(ref(db, `calls/${callId}`), null);
-        }, 2000);
-
-        alert("Llamada rechazada");
-      } else if (status === "ended") {
-        // BUGFIX #4: solo ejecutar si yo NO inicié el fin
-        if (!isEndingCallRef.current) {
-          console.log("🏁 [StartCall] Llamada terminada por el otro usuario");
-          off(callStatusRef, "value");
-          await _cleanupCall(callId, false); // false = no escribir "ended" en Firebase de nuevo
-        }
-      }
-    });
-  };
-
-  // Aceptar llamada
-  const acceptCall = async () => {
-    console.log("✅ [AcceptCall] Aceptando llamada:", incomingCall);
-
-    if (!incomingCall) {
-      console.error("❌ [AcceptCall] No hay incomingCall");
+    try {
+      await set(callRef, callData);
+      console.log("✅ [StartCall] Guardado en Firebase");
+    } catch (err) {
+      console.error("❌ [StartCall] Error al guardar en Firebase:", err);
+      console.error(
+        "👉 Revisa las reglas de Firebase Realtime Database para /calls",
+      );
+      setIsCalling(false);
+      currentCallIdRef.current = null;
+      alert("No se pudo iniciar la llamada. Revisa los permisos de Firebase.");
       return;
     }
+
+    // Escuchar respuesta del callee
+    const callStatusRef = ref(db, `calls/${callId}/status`);
+
+    const handler = async (snap) => {
+      const status = snap.val();
+      console.log("🔄 [StartCall] Status:", status);
+
+      if (status === "accepted") {
+        console.log("✅ [StartCall] Aceptada");
+        off(callStatusRef, "value", handler);
+        try {
+          await joinChannel(roomId);
+        } catch (e) {
+          console.error("❌ [StartCall] Error al unirse al canal Agora:", e);
+        }
+        setActiveCall({ callId, roomId, startTime: Date.now() });
+        setIsCalling(false);
+        _startTimer();
+        _listenForRemoteEnd(callId);
+      } else if (status === "rejected") {
+        console.log("❌ [StartCall] Rechazada");
+        off(callStatusRef, "value", handler);
+        _cleanupLocalState();
+        setTimeout(() => set(ref(db, `calls/${callId}`), null), 2000);
+        alert("Llamada rechazada");
+      } else if (status === "ended" && !isEndingCallRef.current) {
+        console.log("🏁 [StartCall] Terminada por el otro");
+        off(callStatusRef, "value", handler);
+        await leaveChannel();
+        _cleanupLocalState();
+        if (onCallEnd) onCallEnd();
+      }
+    };
+
+    onValue(callStatusRef, handler);
+    statusUnsubRef.current = () => off(callStatusRef, "value", handler);
+  };
+
+  // ─── Aceptar llamada ──────────────────────────────────────────────────────
+
+  const acceptCall = async () => {
+    console.log("✅ [AcceptCall] Aceptando:", incomingCall);
+    if (!incomingCall) return;
 
     const { callId, roomId } = incomingCall;
     isEndingCallRef.current = false;
-
-    console.log(
-      "📝 [AcceptCall] Actualizando status a 'accepted', callId:",
-      callId,
-    );
-    await update(ref(db, `calls/${callId}`), {
-      status: "accepted",
-      acceptedAt: Date.now(),
-    });
-
-    console.log("🎧 [AcceptCall] Uniéndose al canal:", roomId);
-    await joinChannel(roomId);
-
-    setActiveCall({ callId, roomId, startTime: Date.now() });
-    setIncomingCall(null);
     currentCallIdRef.current = callId;
 
-    if (callTimerRef.current) clearInterval(callTimerRef.current);
-    callTimerRef.current = setInterval(() => {
-      setCallDuration((prev) => prev + 1);
-    }, 1000);
-
-    // Escuchar si el caller cuelga
-    const callStatusRef = ref(db, `calls/${callId}/status`);
-    const unsubscribeStatus = onValue(callStatusRef, async (snap) => {
-      const status = snap.val();
-      console.log("🔄 [AcceptCall] Status actualizado:", status);
-
-      if (status === "ended" && !isEndingCallRef.current) {
-        console.log("🏁 [AcceptCall] El caller colgó");
-        off(callStatusRef, "value");
-        await _cleanupCall(callId, false);
-      }
-    });
-  };
-
-  // Rechazar llamada
-  const rejectCall = async () => {
-    console.log("❌ [RejectCall] Rechazando llamada:", incomingCall);
-
-    if (!incomingCall) return;
-
-    const { callId } = incomingCall;
-    await update(ref(db, `calls/${callId}`), {
-      status: "rejected",
-      rejectedAt: Date.now(),
-    });
-
-    setIncomingCall(null);
-
-    setTimeout(async () => {
-      await set(ref(db, `calls/${callId}`), null);
-    }, 2000);
-  };
-
-  // Colgar llamada (llamado por el usuario local al presionar el botón)
-  const endCall = async () => {
-    console.log("🏁 [EndCall] Usuario local colgó, activeCall:", activeCall);
-
-    const callId = activeCall?.callId || currentCallIdRef.current;
-    if (!callId) {
-      console.warn("⚠️ [EndCall] No hay callId para terminar");
-      await _cleanupCall(null, false);
+    try {
+      await update(ref(db, `calls/${callId}`), {
+        status: "accepted",
+        acceptedAt: Date.now(),
+      });
+      console.log("✅ [AcceptCall] Status actualizado a 'accepted'");
+    } catch (err) {
+      console.error("❌ [AcceptCall] Error al actualizar Firebase:", err);
+      console.error(
+        "👉 Revisa las reglas de Firebase Realtime Database para /calls",
+      );
+      alert("No se pudo aceptar la llamada. Revisa los permisos de Firebase.");
       return;
     }
 
-    // BUGFIX #4: marcar que YO inicié el fin para no disparar el listener de nuevo
-    isEndingCallRef.current = true;
+    try {
+      await joinChannel(roomId);
+    } catch (e) {
+      console.error("❌ [AcceptCall] Error al unirse al canal Agora:", e);
+    }
 
-    console.log(
-      "📝 [EndCall] Escribiendo 'ended' en Firebase para callId:",
-      callId,
-    );
-    await update(ref(db, `calls/${callId}`), {
-      status: "ended",
-      endTime: Date.now(),
-    });
-
-    await _cleanupCall(callId, true);
+    setActiveCall({ callId, roomId, startTime: Date.now() });
+    setIncomingCall(null);
+    _startTimer();
+    _listenForRemoteEnd(callId);
   };
 
-  // Limpieza interna (no exportada) — writeNull controla si borramos el nodo
-  const _cleanupCall = async (callId, writeNull = true) => {
+  // ─── Rechazar llamada ─────────────────────────────────────────────────────
+
+  const rejectCall = async () => {
+    console.log("❌ [RejectCall] Rechazando:", incomingCall);
+    if (!incomingCall) return;
+
+    const { callId } = incomingCall;
+
+    try {
+      await update(ref(db, `calls/${callId}`), {
+        status: "rejected",
+        rejectedAt: Date.now(),
+      });
+    } catch (err) {
+      console.error("❌ [RejectCall] Error Firebase:", err);
+    }
+
+    setIncomingCall(null);
+    setTimeout(() => set(ref(db, `calls/${callId}`), null), 2000);
+  };
+
+  // ─── Colgar ───────────────────────────────────────────────────────────────
+
+  const endCall = async () => {
+    const callId = activeCall?.callId || currentCallIdRef.current;
     console.log(
-      "🧹 [Cleanup] Limpiando llamada, callId:",
-      callId,
-      "writeNull:",
-      writeNull,
+      "🏁 [EndCall] Colgando. activeCall:",
+      activeCall,
+      "| callId desde ref:",
+      currentCallIdRef.current,
     );
 
+    if (!callId) {
+      console.warn("⚠️ [EndCall] No hay callId, solo limpiando estado local");
+      await leaveChannel();
+      _cleanupLocalState();
+      if (onCallEnd) onCallEnd();
+      return;
+    }
+
+    isEndingCallRef.current = true;
+
+    try {
+      await update(ref(db, `calls/${callId}`), {
+        status: "ended",
+        endTime: Date.now(),
+      });
+      console.log("✅ [EndCall] 'ended' escrito en Firebase");
+    } catch (err) {
+      console.error("❌ [EndCall] Error al escribir 'ended' en Firebase:", err);
+      // Aunque falle Firebase, limpiamos local igual
+    }
+
+    setTimeout(() => {
+      set(ref(db, `calls/${callId}`), null).catch(() => {});
+    }, 2000);
+
     await leaveChannel();
-
-    if (callTimerRef.current) {
-      clearInterval(callTimerRef.current);
-      callTimerRef.current = null;
-    }
-
-    if (callId && writeNull) {
-      setTimeout(async () => {
-        await set(ref(db, `calls/${callId}`), null);
-        console.log("🗑️ [Cleanup] Nodo de Firebase eliminado");
-      }, 2000);
-    }
-
-    setActiveCall(null);
-    setIsCalling(false);
-    setCallDuration(0);
-    currentCallIdRef.current = null;
-    isEndingCallRef.current = false;
-
+    _cleanupLocalState();
     if (onCallEnd) onCallEnd();
   };
 
+  // ─── Toggle micrófono ─────────────────────────────────────────────────────
+
   const toggleAudio = async () => {
     const track = localAudioTrackRef.current;
-    if (track) {
-      const newState = !isAudioEnabled;
-      await track.setEnabled(newState);
-      setIsAudioEnabled(newState);
-      console.log(
-        "🎤 [Audio] Micrófono:",
-        newState ? "activado" : "silenciado",
-      );
-    } else {
-      console.warn("⚠️ [Audio] No hay track para toggle");
+    if (!track) {
+      console.warn("⚠️ [Audio] No hay track activo");
+      return;
     }
+    const next = !isAudioEnabled;
+    await track.setEnabled(next);
+    setIsAudioEnabled(next);
+    console.log("🎤 [Audio]", next ? "activado" : "silenciado");
   };
 
-  // Limpieza al desmontar
+  // ─── Cleanup al desmontar ─────────────────────────────────────────────────
+
   useEffect(() => {
     return () => {
-      console.log("🧹 [Unmount] Limpiando hook useAgoraCall");
+      console.log("🧹 [Unmount] Limpiando useAgoraCall");
       if (callTimerRef.current) clearInterval(callTimerRef.current);
+      if (statusUnsubRef.current) statusUnsubRef.current();
       leaveChannel();
     };
   }, []);
