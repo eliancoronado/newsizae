@@ -18,13 +18,6 @@ const LoginApp = () => {
   const [apiError, setApiError] = useState(null);
   const [loadingApi, setLoadingApi] = useState(false);
 
-  useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      navigate("/dashboard");
-    }
-  }, []);
-
   // Web - Login.jsx (modificado)
   async function loginWithGoogle() {
     setLoading(true);
