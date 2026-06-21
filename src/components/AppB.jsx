@@ -20,6 +20,7 @@ import DeviceWindow from "./DeviceWindow";
 import { addProjectHistory } from "../utils/projectsService";
 import ChatGPT from "./Creador";
 import CustomCodeEditorr from "./JSEditor";
+import VSCode from "./VSCode";
 
 const CustomCodeEditor = React.lazy(() => import("./CodeEditor"));
 
@@ -88,6 +89,7 @@ const AppB = () => {
   }, []);
 
   // Agregar un listener para activar pantalla completa con el primer clic
+/*
   useEffect(() => {
     const handleFirstClick = () => {
       enterFullscreen();
@@ -101,6 +103,7 @@ const AppB = () => {
       document.removeEventListener("touchstart", handleFirstClick);
     };
   }, [enterFullscreen]);
+  */
 
   // ========== Cargar proyecto desde Firebase ==========
   useEffect(() => {
@@ -456,87 +459,166 @@ const AppB = () => {
         </div>
       )}
 
-      <SidebarB setMode={setMode} />
+      {projectData?.engine === "html" ? (
+        <VSCode
+          projectName={projectData?.name || "Proyecto HTML"}
+          projectId={id}
+          files={
+            projectData?.pages?.map((p) => ({
+              name: `${p.name}.html`,
+              content:
+                p.htmlCode ||
+                `<!DOCTYPE html>\n<html>\n<head>\n  <title>${p.name}</title>\n</head>\n<body>\n  <h1>${p.name}</h1>\n</body>\n</html>`,
+            })) || [{ name: "index.html", content: "" }]
+          }
+          onSave={async (updatedFiles) => {
+            // 🔥 CORREGIDO: Guardar TODOS los archivos
+            const projectRef = ref(db, `projects/${id}`);
+            const snapshot = await get(projectRef);
+            const projectData = snapshot.val() || {};
 
-      {mode === "codeb" ? (
-        <BlocklyComponent onGenerateCode={handleGenerateCode} />
-      ) : mode === "codeJS" ? (
-        <Suspense
-          fallback={<div className="text-black p-4">Cargando editor...</div>}
-        >
-          <CustomCodeEditorr
-            onChange={() => {}}
-            language="javascript"
-            onSave={handleGenerateCode}
-          />
-        </Suspense>
-      ) : mode === "GStyles" ? (
-        <div className="w-full h-full grid grid-cols-4 text-black">
-          <GSPanel
-            selectedGS={selectedGS}
-            setSelectedGS={setSelectedGS}
-            gs={gs}
-            setGs={setGs}
-          />
-          <RGS
-            selectedGS={selectedGS}
-            setSelectedGS={setSelectedGS}
-            gs={gs}
-            setGs={setGs}
-          />
-        </div>
-      ) : mode === "convertio" ? (
-        <ChatGPT />
-      ) : mode === "code" ? (
-        <Suspense
-          fallback={<div className="text-black p-4">Cargando editor...</div>}
-        >
-          <CustomCodeEditor
-            onChange={() => {}}
-            language="javascript"
-            onSave={handleGenerateCode}
-          />
-        </Suspense>
+            const pages = updatedFiles.map((file) => ({
+              name: file.name.replace(".html", ""),
+              htmlCode: file.content,
+              elements: [],
+              code: null,
+              state: {},
+              stylesGlobal: [],
+            }));
+
+            await set(projectRef, {
+              ...projectData,
+              pages,
+              updatedAt: Date.now(),
+            });
+
+            toast.success(
+              `${updatedFiles.length} archivos guardados correctamente`,
+            );
+          }}
+          onPublish={async (updatedFiles) => {
+            // Lo mismo que onSave pero con mensaje de publicación
+            const projectRef = ref(db, `projects/${id}`);
+            const snapshot = await get(projectRef);
+            const projectData = snapshot.val() || {};
+
+            const pages = updatedFiles.map((file) => ({
+              name: file.name.replace(".html", ""),
+              htmlCode: file.content,
+              elements: [],
+              code: null,
+              state: {},
+              stylesGlobal: [],
+            }));
+
+            await set(projectRef, {
+              ...projectData,
+              pages,
+              updatedAt: Date.now(),
+            });
+
+            toast.success(
+              `¡Proyecto publicado! ${updatedFiles.length} archivos`,
+            );
+          }}
+          isReadOnly={userRole === "reader"}
+          canEdit={canEdit}
+          logoUrl="/logo2.png"
+        />
       ) : (
-        <div
-          className={`w-full h-full ${canEdit ? "grid grid-cols-4" : "flex justify-center items-center"}`}
-        >
-          {canEdit && <LeftPanel prid={id} />}
+        <>
+          <SidebarB setMode={setMode} />
 
-          <CentralPanel
-            onUpdate={canEdit ? handlePreviewAndUpdate : undefined}
-            id={id}
-            renderElement={renderElement}
-            contextMenu={contextMenu}
-            setContextMenu={setContextMenu}
-            setDeviceShow={setDeviceShow}
-            urlqr={previewUrl}
-            isReadOnly={isReader}
-            canEdit={canEdit}
-          />
+          {mode === "codeb" ? (
+            <BlocklyComponent onGenerateCode={handleGenerateCode} />
+          ) : mode === "codeJS" ? (
+            <Suspense
+              fallback={
+                <div className="text-black p-4">Cargando editor...</div>
+              }
+            >
+              <CustomCodeEditorr
+                onChange={() => {}}
+                language="javascript"
+                onSave={handleGenerateCode}
+              />
+            </Suspense>
+          ) : mode === "GStyles" ? (
+            <div className="w-full h-full grid grid-cols-4 text-black">
+              <GSPanel
+                selectedGS={selectedGS}
+                setSelectedGS={setSelectedGS}
+                gs={gs}
+                setGs={setGs}
+              />
+              <RGS
+                selectedGS={selectedGS}
+                setSelectedGS={setSelectedGS}
+                gs={gs}
+                setGs={setGs}
+              />
+            </div>
+          ) : mode === "convertio" ? (
+            <ChatGPT />
+          ) : mode === "code" ? (
+            <Suspense
+              fallback={
+                <div className="text-black p-4">Cargando editor...</div>
+              }
+            >
+              <CustomCodeEditor
+                onChange={() => {}}
+                language="javascript"
+                onSave={handleGenerateCode}
+              />
+            </Suspense>
+          ) : (
+            <div
+              className={`w-full h-full ${canEdit ? "grid grid-cols-4" : "flex justify-center items-center"}`}
+            >
+              {canEdit && <LeftPanel prid={id} />}
 
-          {canEdit && (
-            <RightPanel
-              handleStyleChange={handleStyleChange}
-              handleTextChange={handleTextChange}
-              handlePlaceholderChange={handlePlaceholderChange}
-              handleClassChange={handleClassChange}
-              handleTypeInputChange={handleTypeInputChange}
-              handleSrcImgChange={handleSrcImgChange}
-              handleValOptChange={handleValOptChange}
-              handleHrefChange={handleHrefChange}
-              handleAnimationChange={handleAnimationChange}
-              handleDurAnimationChange={handleDurAnimationChange}
-              handleRetAnimationChange={handleRetAnimationChange}
-              prid={id}
-              gs={gs}
-            />
+              <CentralPanel
+                onUpdate={canEdit ? handlePreviewAndUpdate : undefined}
+                id={id}
+                renderElement={renderElement}
+                contextMenu={contextMenu}
+                setContextMenu={setContextMenu}
+                setDeviceShow={setDeviceShow}
+                urlqr={previewUrl}
+                isReadOnly={isReader}
+                canEdit={canEdit}
+              />
+
+              {canEdit && (
+                <RightPanel
+                  handleStyleChange={handleStyleChange}
+                  handleTextChange={handleTextChange}
+                  handlePlaceholderChange={handlePlaceholderChange}
+                  handleClassChange={handleClassChange}
+                  handleTypeInputChange={handleTypeInputChange}
+                  handleSrcImgChange={handleSrcImgChange}
+                  handleValOptChange={handleValOptChange}
+                  handleHrefChange={handleHrefChange}
+                  handleAnimationChange={handleAnimationChange}
+                  handleDurAnimationChange={handleDurAnimationChange}
+                  handleRetAnimationChange={handleRetAnimationChange}
+                  prid={id}
+                  gs={gs}
+                />
+              )}
+
+              {deviceShow && (
+                <DeviceWindow
+                  url={previewUrl}
+                  width={430}
+                  height={932}
+                  dpi={0.4}
+                />
+              )}
+            </div>
           )}
-
-          {deviceShow && (
-            <DeviceWindow url={previewUrl} width={430} height={932} dpi={0.4} />
-          )}
-        </div>
+        </>
       )}
     </div>
   );

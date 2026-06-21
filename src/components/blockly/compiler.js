@@ -2292,7 +2292,7 @@ function ejecutar() {
     const jsCode = generator.generate(ast);
 
     // 🔥 MOSTRAR EN CONSOLA
-    console.log("===== CÓDIGO JS GENERADO =====");
+    console.log("===== CÓDIGO JS GENERADO =====");  
     console.log(jsCode);
     console.log("===== FIN JS =====");
     interpreter.eval(ast);

@@ -27,6 +27,7 @@
     "clsx": "^2.1.1",
     "cropperjs": "^2.1.1",
     "date-fns": "^4.1.0",
+    "emmet-monaco-es": "^5.7.0",
     "firebase": "^12.11.0",
     "idb": "^8.0.3",
     "jose": "^6.2.3",

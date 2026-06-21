@@ -358,6 +358,21 @@ export default function Dashboard() {
     setIsInChat(activeTab === "messages");
   }, [activeTab]);
 
+  // Agregar un listener para activar pantalla completa con el primer clic
+  useEffect(() => {
+    const handleFirstClick = () => {
+      enterFullscreen();
+      document.removeEventListener("click", handleFirstClick);
+    };
+
+    document.addEventListener("click", handleFirstClick);
+    document.addEventListener("touchstart", handleFirstClick);
+    return () => {
+      document.removeEventListener("click", handleFirstClick);
+      document.removeEventListener("touchstart", handleFirstClick);
+    };
+  }, [enterFullscreen]);
+
   // Reiniciar lastMessageTimeRef al cambiar de usuario
   useEffect(() => {
     lastMessageTimeRef.current = null;

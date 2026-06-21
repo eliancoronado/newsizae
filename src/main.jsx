@@ -15,22 +15,7 @@ import LoginApp from "./login/LoginApp.jsx";
 // Componente que envuelve toda la app con pantalla completa
 const AppWithFullscreen = () => {
   
-  const { enterFullscreen } = useFullscreen();
 
-  // Agregar un listener para activar pantalla completa con el primer clic
-  useEffect(() => {
-    const handleFirstClick = () => {
-      enterFullscreen();
-      document.removeEventListener("click", handleFirstClick);
-    };
-
-    document.addEventListener("click", handleFirstClick);
-    document.addEventListener("touchstart", handleFirstClick);
-    return () => {
-      document.removeEventListener("click", handleFirstClick);
-      document.removeEventListener("touchstart", handleFirstClick);
-    };
-  }, [enterFullscreen]);
   
 /*
   // Registrar Service Worker
