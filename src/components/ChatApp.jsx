@@ -1,428 +1,486 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import useStore from "../store/store";
+import { IoIosSend } from "react-icons/io";
 
-class EnhancedCommandProcessor {
-  processCommand(command) {
-    const componentType = this.extractComponentType(command);
-    const componentData = this.createBaseElement(componentType);
+// ============================================================
+//  CONSTANTES
+// ============================================================
+const API_KEY = "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";
 
-    // Aplicar modificaciones según el comando
-    this.applyText(command, componentData);
-    this.applyStyles(command, componentData);
-    this.applySpecialProps(command, componentData);
+// ============================================================
+//  UTILIDADES DE MARKDOWN (versión web)
+// ============================================================
+const processMarkdown = (text) => {
+  if (!text) return [];
 
-    return componentData;
-  }
+  const parts = text.split(/(```[\s\S]*?```)/g);
+  const result = [];
 
-  extractComponentType(command) {
-    const componentMap = {
-      "botón|boton|button": "Button",
-      "input|campo de texto|texto": "Input",
-      "contenedor|container|div": "Container",
-      "lista|ul|u-list": "U-List",
-      "lista ordenada|ol|o-list": "O-List",
-      "ítem|elemento|li|list-item": "List-Item",
-      "enlace|link|a": "Link",
-      "imagen|img|image": "Image",
-      "icono|icon|i": "Icon",
-      "selector|select|dropdown": "Select",
-      "opción|option": "Option",
-      "texto|h1|h2|h3|p": "Text",
-    };
+  parts.forEach((part, index) => {
+    if (part.startsWith("```")) {
+      const lines = part.split("\n");
+      const lang = lines[0].replace("```", "").trim() || "text";
+      const code = lines.slice(1, -1).join("\n");
+      result.push({ type: "code", lang, code, key: `code-${index}` });
+    } else {
+      const lines = part.split("\n");
+      lines.forEach((line, lineIndex) => {
+        if (!line.trim()) {
+          result.push({ type: "empty", key: `empty-${index}-${lineIndex}` });
+          return;
+        }
 
-    for (const [keywords, component] of Object.entries(componentMap)) {
-      if (new RegExp(keywords.split("|").join("|"), "i").test(command)) {
-        return component;
+        const headerMatch = line.match(/^(#{1,3})\s+(.+)/);
+        if (headerMatch) {
+          const level = headerMatch[1].length;
+          const content = headerMatch[2];
+          result.push({
+            type: "header",
+            level,
+            content,
+            key: `header-${index}-${lineIndex}`,
+          });
+          return;
+        }
+
+        const listMatch = line.match(/^-\s+(.+)/);
+        if (listMatch) {
+          result.push({
+            type: "list",
+            content: listMatch[1],
+            key: `list-${index}-${lineIndex}`,
+          });
+          return;
+        }
+
+        // Texto con formato inline (negritas y cursivas)
+        let processed = line;
+        const boldParts = processed.split(/\*\*(.+?)\*\*/g);
+        if (boldParts.length > 1) {
+          const formatted = [];
+          boldParts.forEach((p, i) => {
+            if (i % 2 === 1) {
+              formatted.push({ type: "bold", content: p });
+            } else if (p) {
+              formatted.push({ type: "text", content: p });
+            }
+          });
+          result.push({
+            type: "formatted",
+            parts: formatted,
+            key: `formatted-${index}-${lineIndex}`,
+          });
+        } else {
+          const italicParts = processed.split(/\*(.+?)\*/g);
+          if (italicParts.length > 1) {
+            const formatted = [];
+            italicParts.forEach((p, i) => {
+              if (i % 2 === 1) {
+                formatted.push({ type: "italic", content: p });
+              } else if (p) {
+                formatted.push({ type: "text", content: p });
+              }
+            });
+            result.push({
+              type: "formatted",
+              parts: formatted,
+              key: `formatted-${index}-${lineIndex}`,
+            });
+          } else {
+            result.push({
+              type: "text",
+              content: processed,
+              key: `text-${index}-${lineIndex}`,
+            });
+          }
+        }
+      });
+    }
+  });
+
+  return result;
+};
+
+// ============================================================
+//  CONVERSIÓN HTML + CSS → OBJETO (adaptado del componente ChatGPT)
+// ============================================================
+const convertHtmlToObject = (htmlString) => {
+  if (!htmlString || !htmlString.trim()) return null;
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(htmlString, "text/html");
+
+  // Extraer todo el CSS de las etiquetas <style>
+  let allCSS = "";
+  const styleTags = doc.querySelectorAll("style");
+  styleTags.forEach((styleTag) => {
+    allCSS += styleTag.innerHTML;
+    styleTag.remove();
+  });
+
+  // Parsear reglas CSS (ordenadas)
+  const parseCSSRules = (cssText) => {
+    const rules = [];
+    const cleanCSS = cssText.replace(/\/\*[\s\S]*?\*\//g, "");
+    const ruleRegex = /([^{]+)\{([^}]*)\}/g;
+    let match;
+    while ((match = ruleRegex.exec(cleanCSS)) !== null) {
+      const selector = match[1].trim();
+      const declarationsStr = match[2].trim();
+      if (!declarationsStr || selector === "*") continue;
+      const declarations = {};
+      declarationsStr.split(";").forEach((rule) => {
+        const [prop, val] = rule.split(":").map((s) => s.trim());
+        if (prop && val) declarations[prop] = val;
+      });
+      if (Object.keys(declarations).length > 0) {
+        rules.push({ selector, declarations });
       }
     }
+    return rules;
+  };
 
-    return "Button"; // Default
-  }
+  const cssRules = parseCSSRules(allCSS);
 
-  createBaseElement(type) {
-    // Definimos estilos base específicos para cada tipo de componente
-    const componentStyles = {
-      Button: {
-        backgroundColor: "#3b82f6",
-        color: "#ffffff",
-        borderColor: "#2563eb",
-        borderRadius: "6px",
-        padding: "8px 16px",
-        fontSize: "16px",
-        fontWeight: "500",
-        cursor: "pointer",
-      },
-      Input: {
-        border: "1px solid #d1d5db",
-        borderRadius: "4px",
-        padding: "8px 12px",
-        fontSize: "14px",
-        width: "200px",
-        backgroundColor: "#ffffff",
-        color: "#111827",
-      },
-      Container: {
-        border: "1px solid #e5e7eb",
-        borderRadius: "4px",
-        padding: "16px",
-        margin: "8px 0",
-        backgroundColor: "#ffffff",
-      },
-      Text: {
-        fontSize: "16px",
-        color: "#111827",
-        margin: "8px 0",
-        lineHeight: "1.5",
-      },
-      Link: {
-        color: "#3b82f6",
-        textDecoration: "underline",
-        cursor: "pointer",
-      },
-      // ... otros componentes
+  // Aplicar estilos desde reglas CSS
+  const applyStylesFromRules = (element, rules) => {
+    const applied = {};
+    for (const rule of rules) {
+      try {
+        if (element.matches && element.matches(rule.selector)) {
+          Object.assign(applied, rule.declarations);
+        }
+      } catch (_) {
+        /* ignorar selectores inválidos */
+      }
+    }
+    return applied;
+  };
+
+  // Convertir a camelCase
+  const toCamelCase = (prop) =>
+    prop.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+
+  // Fusionar estilos: CSS + inline
+  const mergeStyles = (element, rules, inlineStyleStr = "") => {
+    let finalStyles = applyStylesFromRules(element, rules);
+    if (inlineStyleStr) {
+      inlineStyleStr.split(";").forEach((rule) => {
+        const [prop, val] = rule.split(":").map((s) => s.trim());
+        if (prop && val) finalStyles[prop] = val;
+      });
+    }
+    const camelCaseStyles = {};
+    for (const [prop, val] of Object.entries(finalStyles)) {
+      camelCaseStyles[toCamelCase(prop)] = val;
+    }
+    return camelCaseStyles;
+  };
+
+  // Limpiar nodos no deseados
+  const removeUnwantedNodes = (element) => {
+    const unwantedTags = ["script", "link", "meta", "title", "style"];
+    for (let i = element.childNodes.length - 1; i >= 0; i--) {
+      const node = element.childNodes[i];
+      if (node.nodeType === Node.COMMENT_NODE) {
+        element.removeChild(node);
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const tagName = node.tagName.toLowerCase();
+        if (
+          unwantedTags.includes(tagName) ||
+          tagName === "hr" ||
+          tagName === "br"
+        ) {
+          element.removeChild(node);
+        } else {
+          removeUnwantedNodes(node);
+        }
+      }
+    }
+  };
+
+  // Mapeo de etiquetas a nombres
+  const convertTagToName = (tag) => {
+    const map = {
+      body: "Container",
+      div: "Container",
+      section: "Container",
+      header: "Container",
+      nav: "Container",
+      footer: "Container",
+      form: "Container",
+      article: "Container",
+      aside: "Container",
+      main: "Container",
+      span: "Text",
+      strong: "Text",
+      b: "Text",
+      em: "Text",
+      h1: "Text",
+      h2: "Text",
+      h3: "Text",
+      h4: "Text",
+      h5: "Text",
+      h6: "Text",
+      label: "Text",
+      p: "Text",
+      i: "Icon",
+      img: "Image",
+      button: "Button",
+      input: "Input",
+      textarea: "Input",
+      select: "Select",
+      option: "Option",
+      a: "Link",
+      ol: "O-List",
+      ul: "U-List",
+      li: "List-Item",
     };
-    // Estructura base compatible con tu sistema
-    const baseElement = {
-      id: Date.now(),
-      name: type,
-      text: this.getDefaultText(type),
+    const lower = tag.toLowerCase();
+    return map[lower] || tag.charAt(0).toUpperCase() + tag.slice(1);
+  };
+
+  const generateId = () => Date.now() + Math.random().toString(16).slice(2);
+
+  // Crear objeto del elemento
+  const createElementObject = (element, rules) => {
+    const tagName = element.tagName.toLowerCase();
+    const name = convertTagToName(tagName);
+    const directText = Array.from(element.childNodes)
+      .filter((node) => node.nodeType === Node.TEXT_NODE)
+      .map((node) => node.textContent.trim())
+      .join(" ");
+    const inlineStyleStr = element.getAttribute("style") || "";
+    const mergedStyles = mergeStyles(element, rules, inlineStyleStr);
+
+    const newElement = {
+      id: generateId(),
+      name,
+      text: directText || "",
       children: [],
-      animation: "",
-      retrasoanim: "",
-      duracionanim: "",
-      iconClass: type === "Icon" ? "bx bx-left-arrow-alt" : "",
-      styles: {
-        color: "#000000",
-        cursor: "",
-        backgroundColor: "",
-        border: "",
-        borderWidth: "1px",
-        borderColor: "",
-        borderStyle: "solid",
-        fontSize: "16px",
-        fontFamily: "Poppins, sans-serif",
-        fontWeight: "400",
-        lineHeight: "1",
-        textAlign: "left",
-        width: type === "Input" ? "200px" : "auto",
-        maxWidth: "",
-        height: "auto",
-        maxHeight: "",
-        display: "block",
-        flexDirection: "",
-        alignItems: "start",
-        justifyContent: "start",
-        gridTemplateColumns: "",
-        gridTemplateRows: "",
-        gap: "",
-        outline: "",
-        position: "static",
-        overflow: "",
-        boxShadow: "",
-        top: "0px",
-        bottom: "0px",
-        left: "0px",
-        right: "0px",
-        transform: "",
-        transition: "",
-        zIndex: "",
-        backdropFilter: "",
-        margin: "",
-        padding: "",
-        borderRadius: "",
-        ...(componentStyles[type] || {}),
-      },
+      styles: mergedStyles,
     };
 
-    // Propiedades especiales por tipo
-    if (type === "Input") {
-      baseElement.placeholder = "Placeholder";
-      baseElement.type = "text";
-    } else if (type === "Image") {
-      baseElement.src = "https://via.placeholder.com/150";
-    } else if (type === "Link") {
-      baseElement.href = "#";
-    } else if (type === "Option") {
-      baseElement.value = "texto";
+    // Atributos específicos
+    if (name === "Input") {
+      if (element.placeholder) newElement.placeholder = element.placeholder;
+      if (element.type) newElement.type = element.type;
     }
+    if (name === "Image" && element.src) newElement.src = element.src;
+    if (name === "Icon" && element.className)
+      newElement.iconClass = element.className;
+    if (name === "Option" && element.value) newElement.value = element.value;
+    if (name === "Link" && element.href) newElement.href = element.href;
+    // Otros atributos (id, class, etc.)
+    Array.from(element.attributes).forEach((attr) => {
+      if (attr.name !== "style" && !newElement.hasOwnProperty(attr.name)) {
+        newElement[attr.name] = attr.value;
+      }
+    });
 
-    return baseElement;
+    // Procesar hijos (solo elementos)
+    Array.from(element.children).forEach((child) => {
+      newElement.children.push(createElementObject(child, rules));
+    });
+
+    return newElement;
+  };
+
+  // Obtener el contenedor raíz (body o un wrapper)
+  let sourceContainer = doc.body;
+  if (!sourceContainer || !sourceContainer.children.length) {
+    const tempDiv = doc.createElement("div");
+    tempDiv.innerHTML = doc.documentElement
+      ? doc.documentElement.innerHTML
+      : htmlString;
+    tempDiv.querySelectorAll("style").forEach((s) => s.remove());
+    sourceContainer = tempDiv;
   }
 
-  getDefaultText(type) {
-    const defaultTexts = {
-      Container: "Div",
-      Input: "",
-      Icon: "",
-      Select: "",
-      Link: "Link",
-      "List-Item": "Item de la lista",
-      "O-List": "",
-      "U-List": "",
-      Button: "Texto",
-      Text: "Texto",
-    };
-    return defaultTexts[type] || "texto";
+  // Wrapper para mantener atributos del body
+  const wrapper = document.createElement("div");
+  Array.from(sourceContainer.attributes || []).forEach((attr) => {
+    wrapper.setAttribute(attr.name, attr.value);
+  });
+  wrapper.innerHTML = sourceContainer.innerHTML;
+  removeUnwantedNodes(wrapper);
+
+  if (!wrapper.children.length) return null;
+
+  // Objeto raíz
+  const rootObject = {
+    id: generateId(),
+    name: "Container",
+    text: "",
+    children: Array.from(wrapper.children).map((child) =>
+      createElementObject(child, cssRules),
+    ),
+    styles: mergeStyles(wrapper, cssRules, wrapper.getAttribute("style") || ""),
+  };
+  Array.from(wrapper.attributes).forEach((attr) => {
+    if (attr.name !== "style") {
+      rootObject[attr.name] = attr.value;
+    }
+  });
+
+  return rootObject;
+};
+
+// ============================================================
+//  COMPONENTE DE CARGA (puntos animados con CSS)
+// ============================================================
+const LoadingDots = () => (
+  <div className="flex items-center space-x-1.5 py-1">
+    <span
+      className="w-2.5 h-2.5 bg-gray-400 rounded-full animate-pulse"
+      style={{ animationDelay: "0ms" }}
+    />
+    <span
+      className="w-2.5 h-2.5 bg-gray-400 rounded-full animate-pulse"
+      style={{ animationDelay: "200ms" }}
+    />
+    <span
+      className="w-2.5 h-2.5 bg-gray-400 rounded-full animate-pulse"
+      style={{ animationDelay: "400ms" }}
+    />
+  </div>
+);
+
+// ============================================================
+//  COMPONENTE DE BLOQUE DE CÓDIGO
+// ============================================================
+const CodeBlock = ({ code, lang }) => (
+  <div className="my-2 rounded-lg overflow-hidden border border-gray-700 bg-[#0d1117] max-h-[500px] flex flex-col">
+    <div className="px-3 py-1 bg-[#161b22] border-b border-gray-700">
+      <span className="text-xs text-gray-400 uppercase font-medium">
+        {lang}
+      </span>
+    </div>
+    <div className="overflow-auto p-3">
+      <pre className="text-sm text-gray-200 font-mono whitespace-pre-wrap break-words">
+        {code}
+      </pre>
+    </div>
+  </div>
+);
+
+// ============================================================
+//  COMPONENTE DE MENSAJE
+// ============================================================
+const MessageItem = ({ message }) => {
+  const isUser = message.role === "user";
+  const isAssistant = message.role === "assistant";
+  const isSystem = message.role === "system";
+  const isSuccess = message.role === "success";
+
+  let bgClass = "bg-[#21262d] border border-gray-700 text-white";
+  let align = "self-start";
+  let rounded = "rounded-bl-none";
+
+  if (isUser) {
+    bgClass = "bg-indigo-600 text-white";
+    align = "self-end";
+    rounded = "rounded-br-none";
+  } else if (isSystem || isSuccess) {
+    bgClass = "bg-gray-800 text-gray-300 border border-gray-700";
+    align = "self-start";
+    rounded = "rounded-bl-none";
   }
 
-  applyText(command, component) {
-    // Intenta primero encontrar texto entre comillas
-    const quotedTextMatch =
-      command.match(/"([^"]+)"/) || command.match(/'([^']+)'/);
+  const parsedContent = processMarkdown(message.content);
 
-    if (quotedTextMatch && quotedTextMatch[1]) {
-      component.text = quotedTextMatch[1].trim();
-      return;
-    }
+  const renderContent = () => {
+    return parsedContent.map((part) => {
+      switch (part.type) {
+        case "code":
+          return <CodeBlock key={part.key} code={part.code} lang={part.lang} />;
 
-    // Si no hay comillas, busca el patrón "que diga [todo hasta el final]"
-    const unquotedMatch = command.match(
-      /(?:que diga|texto|con el texto)\s+(.+)/i
-    );
+        case "header":
+          const headerSize =
+            part.level === 1
+              ? "text-xl"
+              : part.level === 2
+                ? "text-lg"
+                : "text-base";
+          return (
+            <div
+              key={part.key}
+              className={`font-bold ${headerSize} mt-2 mb-1 text-white`}
+            >
+              {part.content}
+            </div>
+          );
 
-    if (unquotedMatch && unquotedMatch[1]) {
-      // Elimina posibles comandos adicionales después del texto
-      const textParts = unquotedMatch[1].split(
-        /(?=\s(?:azul|rojo|grande|pequeño|redondeado|centrado|sombra|con))/i
-      );
-      component.text = textParts[0].trim();
-    }
+        case "list":
+          return (
+            <div key={part.key} className="flex items-start gap-2 my-1">
+              <span className="text-indigo-400">•</span>
+              <span className="text-white">{part.content}</span>
+            </div>
+          );
 
-    // Si el comando es solo texto entre comillas
-    if (
-      !component.text &&
-      (command.startsWith('"') || command.startsWith("'"))
-    ) {
-      const cleanText = command.slice(1, -1).trim();
-      if (cleanText) component.text = cleanText;
-    }
-  }
+        case "formatted":
+          return (
+            <span key={part.key} className="text-white">
+              {part.parts.map((sub, idx) => {
+                if (sub.type === "bold")
+                  return <strong key={idx}>{sub.content}</strong>;
+                if (sub.type === "italic")
+                  return <em key={idx}>{sub.content}</em>;
+                return <span key={idx}>{sub.content}</span>;
+              })}
+            </span>
+          );
 
-  applyStyles(command, component) {
-    const styles = component.styles;
+        case "text":
+          return (
+            <span key={part.key} className="text-white">
+              {part.content}
+            </span>
+          );
 
-    // Colores
-    const colorMap = {
-      azul: {
-        backgroundColor: "#2563eb",
-        color: "#ffffff",
-        borderColor: "#2563eb",
-      },
-      rojo: {
-        backgroundColor: "#ef4444",
-        color: "#ffffff",
-        borderColor: "#dc2626",
-      },
-      verde: {
-        backgroundColor: "#10b981",
-        color: "#ffffff",
-        borderColor: "#059669",
-      },
-      amarillo: {
-        backgroundColor: "#f59e0b",
-        color: "#ffffff",
-        borderColor: "#d97706",
-      },
-      gris: {
-        backgroundColor: "#6b7280",
-        color: "#ffffff",
-        borderColor: "#4b5563",
-      },
-      blanco: {
-        backgroundColor: "#ffffff",
-        color: "#000000",
-        borderColor: "#e5e7eb",
-      },
-      negro: {
-        backgroundColor: "#000000",
-        color: "#ffffff",
-        borderColor: "#000000",
-      },
-    };
+        case "empty":
+          return <div key={part.key} className="h-2" />;
 
-    for (const [keywords, colorStyles] of Object.entries(colorMap)) {
-      if (new RegExp(keywords.split("|").join("|"), "i").test(command)) {
-        Object.assign(styles, colorStyles);
+        default:
+          return null;
       }
-    }
+    });
+  };
 
-    // Tamaños
-    if (command.match(/pequeño|small/i)) {
-      styles.padding = "0.25rem 0.5rem";
-      styles.fontSize = "0.8rem";
-    } else if (command.match(/grande|large/i)) {
-      styles.padding = "0.8rem 1.5rem";
-      styles.fontSize = "1.2rem";
-    } else if (command.match(/extra grande|x-large|enorme/i)) {
-      styles.padding = "1rem 2rem";
-      styles.fontSize = "1.5rem";
-    }
+  return (
+    <div
+      className={`max-w-[85%] p-3 rounded-xl shadow-md mb-3 ${bgClass} ${align} ${rounded}`}
+    >
+      {isSuccess && (
+        <div className="flex items-center gap-2 text-green-400 font-medium">
+          <span>✅</span> {message.content}
+        </div>
+      )}
+      {isSystem && (
+        <div className="text-sm text-gray-400">{message.content}</div>
+      )}
+      {(isUser || isAssistant) && renderContent()}
+    </div>
+  );
+};
 
-    // Bordes
-    if (command.match(/redondeado|rounded/i)) {
-      styles.borderRadius = "8px";
-    } else if (command.match(/círculo|circle/i)) {
-      styles.borderRadius = "50%";
-      if (component.name === "Button" || component.name === "Image") {
-        styles.width = styles.height = "50px";
-      }
-    }
-
-    // Efectos
-    if (command.match(/sombra|shadow/i)) {
-      styles.boxShadow =
-        "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)";
-    }
-
-    // Posición
-    if (command.match(/centrado|center/i)) {
-      styles.textAlign = "center";
-      styles.marginLeft = "auto";
-      styles.marginRight = "auto";
-      if (component.name === "Button") {
-        styles.display = "block";
-      }
-    }
-  }
-
-  applySpecialProps(command, component) {
-    // Para inputs
-    if (component.name === "Input") {
-      // Manejo de tipos de input
-      if (command.match(/contraseña|password/i)) {
-        component.type = "password";
-      } else if (command.match(/email|correo/i)) {
-        component.type = "email";
-      } else if (command.match(/número|number/i)) {
-        component.type = "number";
-      }
-
-      // Manejo mejorado de placeholder
-      const placeholderMatch =
-        command.match(/con placeholder "([^"]+)"/i) ||
-        command.match(/con placeholder '([^']+)'/i) ||
-        command.match(/con placeholder ([^"'\s]+)/i);
-
-      if (placeholderMatch && placeholderMatch[1]) {
-        component.placeholder = placeholderMatch[1].trim();
-      }
-
-      // Alternativa: "placeholder de [texto]"
-      const placeholderAltMatch =
-        command.match(/placeholder de "([^"]+)"/i) ||
-        command.match(/placeholder de '([^']+)'/i) ||
-        command.match(/placeholder de ([^"'\s]+)/i);
-
-      if (
-        placeholderAltMatch &&
-        placeholderAltMatch[1] &&
-        !component.placeholder
-      ) {
-        component.placeholder = placeholderAltMatch[1].trim();
-      }
-    }
-
-    // Para enlaces (mejorado para manejar comillas)
-    if (component.name === "Link") {
-      const hrefMatch =
-        command.match(/enlace a "([^"]+)"/i) ||
-        command.match(/enlace a '([^']+)'/i) ||
-        command.match(/enlace a ([^"'\s]+)/i);
-
-      if (hrefMatch && hrefMatch[1]) {
-        component.href = hrefMatch[1].trim();
-
-        // Asegurar que las URLs comiencen con http:// o https://
-        if (!component.href.match(/^https?:\/\//i)) {
-          component.href = `https://${component.href}`;
-        }
-      }
-
-      // Alternativa: "href de [url]"
-      const hrefAltMatch =
-        command.match(/href de "([^"]+)"/i) ||
-        command.match(/href de '([^']+)'/i) ||
-        command.match(/href de ([^"'\s]+)/i);
-
-      if (hrefAltMatch && hrefAltMatch[1] && !component.href) {
-        component.href = hrefAltMatch[1].trim();
-        if (!component.href.match(/^https?:\/\//i)) {
-          component.href = `https://${component.href}`;
-        }
-      }
-    }
-
-    // Para imágenes (mejorado para manejar comillas)
-    if (component.name === "Image") {
-      const imageMatch =
-        command.match(/imagen de "([^"]+)"/i) ||
-        command.match(/imagen de '([^']+)'/i) ||
-        command.match(/imagen de ([^"'\s]+)/i);
-
-      if (imageMatch && imageMatch[1]) {
-        const searchTerm = encodeURIComponent(imageMatch[1].trim());
-        component.src = `https://source.unsplash.com/random/300x200/?${searchTerm}`;
-      }
-
-      // Alternativa para especificar tamaño
-      const sizedImageMatch =
-        command.match(/imagen (\d+)x(\d+) de "([^"]+)"/i) ||
-        command.match(/imagen (\d+)x(\d+) de '([^']+)'/i) ||
-        command.match(/imagen (\d+)x(\d+) de ([^"'\s]+)/i);
-
-      if (sizedImageMatch && sizedImageMatch[3]) {
-        const width = sizedImageMatch[1];
-        const height = sizedImageMatch[2];
-        const searchTerm = encodeURIComponent(sizedImageMatch[3].trim());
-        component.src = `https://source.unsplash.com/random/${width}x${height}/?${searchTerm}`;
-      }
-    }
-
-    // Para íconos (mantenemos la versión anterior que ya funciona bien)
-    if (component.name === "Icon") {
-      const iconMap = {
-        "flecha|arrow": "bx bx-arrow-back",
-        "buscar|search": "bx bx-search",
-        "usuario|user": "bx bx-user",
-        "corazón|heart": "bx bx-heart",
-        "estrellas|star": "bx bx-star",
-      };
-
-      for (const [keywords, iconClass] of Object.entries(iconMap)) {
-        if (new RegExp(keywords.split("|").join("|"), "i").test(command)) {
-          component.iconClass = iconClass;
-          break;
-        }
-      }
-    }
-  }
-}
-
+// ============================================================
+//  COMPONENTE PRINCIPAL ChatUI
+// ============================================================
 const ChatUI = () => {
   const [messages, setMessages] = useState([
     {
-      text: "¡Hola! Soy tu asistente de diseño avanzado. Puedes pedirme que cree cualquier elemento de UI.",
-      sender: "ai",
-      examples: [
-        "Añade un botón azul redondeado que diga 'Comenzar'",
-        "Crea un input para contraseñas con placeholder 'Ingresa tu clave'",
-        "Inserta una imagen de paisajes",
-        "Necesito un enlace a Google que diga 'Buscar'",
-        "Quiero una lista con 3 ítems",
-      ],
+      id: "welcome",
+      role: "assistant",
+      content:
+        "¡Hola! Soy **SIZAE AI**. Descríbeme qué interfaz necesitas y la generaré.\n\nEjemplo: *'Crea un formulario de login moderno con validación'*",
     },
   ]);
-  const [inputValue, setInputValue] = useState("");
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
-  const processor = new EnhancedCommandProcessor();
-
-  // Obtener estados y acciones del store
-  const {
-    selectedElement,
-    droppedElements,
-    setDroppedElements,
-    setSelectedElement
-  } = useStore();
+  const { setDroppedElements } = useStore();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -432,207 +490,214 @@ const ChatUI = () => {
     scrollToBottom();
   }, [messages]);
 
-  const addChildToParent = (elements, parentId, child) => {
-    return elements.map((el) => {
-      if (el.id === parentId) {
-        return { ...el, children: [...el.children, child] };
+  // Extraer el código HTML de la respuesta (dentro de bloques ```html ... ```)
+  const extractHtmlCode = (text) => {
+    const regex = /```(?:html|HTML)?\s*([\s\S]*?)```/g;
+    const matches = [];
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      matches.push(match[1].trim());
+    }
+    // Si no hay bloque con html, buscar cualquier bloque de código
+    if (matches.length === 0) {
+      const fallbackRegex = /```([\s\S]*?)```/g;
+      while ((match = fallbackRegex.exec(text)) !== null) {
+        matches.push(match[1].trim());
       }
-      if (el.children.length > 0) {
-        return {
-          ...el,
-          children: addChildToParent(el.children, parentId, child),
-        };
-      }
-      return el;
-    });
+    }
+    return matches;
   };
 
-  const handleSendMessage = () => {
-    if (!inputValue.trim()) return;
+  const sendMessage = async () => {
+    if (!input.trim() || loading) return;
 
-    // Añadir mensaje del usuario
-    const userMessage = { text: inputValue, sender: "user" };
-    setMessages((prev) => [...prev, userMessage]);
-
-    // Procesar comando
-    const componentData = processor.processCommand(inputValue);
-
-    // Crear nuevo elemento compatible con el formato de handleDrop
-    const newElement = {
-      id: Date.now(),
-      name: componentData.name,
-      text: componentData.text || 
-           (componentData.name === "Container" ? "Div" : 
-            componentData.name === "Input" ? "" : 
-            componentData.name === "Icon" ? "" : 
-            componentData.name === "Select" ? "" : 
-            componentData.name === "Link" ? "Link" : 
-            componentData.name === "List-Item" ? "Item de la lista" : 
-            componentData.name === "O-List" ? "" : 
-            componentData.name === "U-List" ? "" : "texto"),
-      children: [],
-      ...(componentData.name === "Input" && { 
-        placeholder: componentData.placeholder || "Placeholder",
-        type: componentData.type || "text"
-      }),
-      ...(componentData.name === "Image" && { src: componentData.src }),
-      ...(componentData.name === "Icon" && { iconClass: componentData.iconClass }),
-      ...(componentData.name === "Link" && { href: componentData.href || "#" }),
-      ...(componentData.name === "Option" && { value: "texto" }),
-      animation: "",
-      retrasoanim: "",
-      duracionanim: "",
-      styles: {
-        color: "#000000",
-        cursor: "",
-        backgroundColor: "",
-        border: "",
-        borderWidth: "1px",
-        borderColor: "",
-        borderStyle: "solid",
-        fontSize: "16px",
-        fontFamily: "Oswald, sans-serif",
-        fontWeight: "400",
-        lineHeight: "1",
-        textAlign: "left",
-        width: "auto",
-        maxWidth: "",
-        height: "auto",
-        maxHeight: "",
-        display: "block",
-        flexDirection: "",
-        alignItems: "start",
-        justifyContent: "start",
-        gridTemplateColumns: "",
-        gridTemplateRows: "",
-        gap: "",
-        outline: "",
-        position: "static",
-        overflow: "",
-        boxShadow: "",
-        top: "0px",
-        bottom: "0px",
-        left: "0px",
-        right: "0px",
-        transform: "",
-        transition: "",
-        zIndex: "",
-        backdropFilter: "",
-        margin: "",
-        padding: "",
-        borderRadius: "",
-        ...componentData.styles
-      }
+    const userMessage = {
+      id: Date.now().toString(),
+      role: "user",
+      content: input.trim(),
     };
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setLoading(true);
 
-    // Actualizar droppedElements en el store
-    const updatedElements = selectedElement?.name === "Container"
-      ? addChildToParent(droppedElements, selectedElement.id, newElement)
-      : [...droppedElements, newElement];
-
-    setDroppedElements(updatedElements);
-
-    // Añadir respuesta de la IA
+    const loadingId = "loading-" + Date.now();
     setMessages((prev) => [
       ...prev,
-      {
-        text: `He creado un ${componentData.name}: ${
-          componentData.text || "(sin texto)"
-        }`,
-        sender: "ai",
-        componentData: newElement
-      },
+      { id: loadingId, role: "loading", content: "" },
     ]);
 
-    setInputValue("");
+    try {
+      const response = await fetch(
+        "https://api.groq.com/openai/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: [
+              {
+                role: "system",
+                content: `
+Eres un experto desarrollador frontend.
+Genera código HTML, CSS y JavaScript para la interfaz que el usuario te pida.
+Siempre proporciona el código completo en un solo bloque de código HTML que incluya CSS dentro de etiquetas <style> y JavaScript si es necesario.
+Usa formato Markdown para mejorar la presentación:
+- **negritas** para énfasis
+- *cursivas* para términos técnicos
+- ## títulos para secciones
+- - listas para enumerar pasos
+`,
+              },
+              {
+                role: "user",
+                content: input.trim(),
+              },
+            ],
+          }),
+        },
+      );
+
+      const data = await response.json();
+
+      // Eliminar mensaje de loading
+      setMessages((prev) => prev.filter((m) => m.id !== loadingId));
+
+      if (data.choices && data.choices.length > 0) {
+        const content = data.choices[0].message.content;
+
+        // Intentar extraer código HTML de la respuesta
+        const htmlBlocks = extractHtmlCode(content);
+
+        if (htmlBlocks.length > 0) {
+          // Tomar el primer bloque (asumimos que es el HTML completo)
+          const htmlCode = htmlBlocks[0];
+          const obj = convertHtmlToObject(htmlCode);
+
+          if (obj) {
+            // Setear en el store
+            setDroppedElements([obj]);
+
+            // Mensaje de éxito
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: Date.now().toString(),
+                role: "success",
+                content:
+                  "✅ Vista generada exitosamente. El diseño se ha actualizado.",
+              },
+            ]);
+          } else {
+            // Fallo al convertir
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: Date.now().toString(),
+                role: "assistant",
+                content:
+                  "Pude extraer el código HTML, pero no pude convertirlo a un objeto válido. Intenta con una descripción más clara.",
+              },
+            ]);
+          }
+        } else {
+          // No se encontró bloque de código, mostrar la respuesta tal cual
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now().toString(),
+              role: "assistant",
+              content,
+            },
+          ]);
+        }
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            role: "assistant",
+            content: "No se recibió una respuesta válida de la IA.",
+          },
+        ]);
+      }
+    } catch (error) {
+      setMessages((prev) => prev.filter((m) => m.id !== loadingId));
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: "assistant",
+          content: `❌ Error: ${error.message}`,
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleKeyPress = (e) => {
-    if (e.key === "Enter") {
-      handleSendMessage();
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
     }
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-100 text-black rounded-md">
-      {/* Panel del chat */}
-      <div className="flex-1 flex flex-col rounded-md bg-[#2B2B44]">
-        <div className="p-4 bg-indigo-600 text-white rounded-md">
-          <h1 className="text-xl font-bold">SIZAE Asistente IA</h1>
+    <div className="flex flex-col h-full bg-[#0d1117] text-white rounded-md">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 bg-[#161b22] border-b border-gray-700 rounded-t-md">
+        <h1 className="text-xl font-semibold">✦ Baboo AI</h1>
+        <div className="bg-gray-700 px-3 py-1 rounded-full text-xs text-gray-300">
+          ⚡ SIZAE 1.1
         </div>
+      </div>
 
-        <div className="flex-1 p-4 overflow-y-auto bg-[#2B2B44]">
-          <div className="space-y-4">
-            {messages.map((message, index) => (
+      {/* Lista de mensajes */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {messages.map((msg) => {
+          if (msg.role === "loading") {
+            return (
               <div
-                key={index}
-                className={`flex ${
-                  message.sender === "user" ? "justify-end" : "justify-start"
-                }`}
+                key={msg.id}
+                className="self-start max-w-[85%] p-3 rounded-xl bg-[#21262d] border border-gray-700"
               >
-                <div
-                  className={`max-w-xs md:max-w-md lg:max-w-lg rounded-lg px-4 py-2 ${
-                    message.sender === "user"
-                      ? "bg-indigo-500 text-white rounded-br-none"
-                      : "bg-white border border-gray-200 rounded-bl-none"
-                  }`}
-                >
-                  <p>{message.text}</p>
-
-                  {message.examples && (
-                    <div className="mt-2 text-sm">
-                      <p className="font-semibold">Ejemplos:</p>
-                      <ul className="list-disc pl-5 space-y-1">
-                        {message.examples.map((example, i) => (
-                          <li key={i} className="text-black">
-                            {example}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {message.componentData && (
-                    <div className="mt-2 text-xs p-2 bg-gray-100 rounded text-gray-700">
-                      <pre>
-                        {JSON.stringify(message.componentData, null, 2)}
-                      </pre>
-                    </div>
-                  )}
-                </div>
+                <LoadingDots />
               </div>
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
-        </div>
+            );
+          }
+          return <MessageItem key={msg.id} message={msg} />;
+        })}
+        <div ref={messagesEndRef} />
+      </div>
 
-        <div className="bg-[#2B2B44]">
-          <div className="flex w-full">
-            <input
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Escribe tu comando (ej. 'Añade un botón azul que diga Comenzar')"
-              className="flex-1 px-2 py-2 border border-gray-300 rounded-l-lg focus:outline-none text-xs focus:ring-2 focus:ring-indigo-500"
-            />
-            <button
-              onClick={handleSendMessage}
-              className="px-2 py-2 bg-indigo-600 text-white rounded-r-lg hover:bg-indigo-700 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              Enviar
-            </button>
-          </div>
-          <p className="mt-2 text-xs text-gray-500 text-center">
-            Tip: Prueba comandos como "lista con 3 ítems" o "input para email"
-          </p>
-          {selectedElement && (
-            <p className="mt-2 text-xs text-indigo-600">
-              Elemento seleccionado: {selectedElement.name} (ID: {selectedElement.id})
-              {selectedElement.name === "Container" && " - Los nuevos elementos se añadirán dentro de este contenedor"}
-            </p>
-          )}
-        </div>
+      {/* Input area */}
+      <div className="border-t border-gray-700 p-3 bg-[#161b22] rounded-b-md">
+        <div className="flex items-end gap-2">
+          <textarea
+            rows={1}
+            className="flex-1 bg-[#0d1117] border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+            placeholder="Describe tu interfaz…"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyPress}
+            disabled={loading}
+            style={{ minHeight: "48px", maxHeight: "120px" }}
+          />
+          <button
+            onClick={sendMessage}
+            disabled={loading || !input.trim()}
+            className={`px-5 py-2 rounded-lg font-medium transition ${
+              loading || !input.trim()
+                ? "bg-gray-600 text-gray-300 cursor-not-allowed"
+                : "bg-indigo-600 hover:bg-indigo-700 text-white"
+            }`}
+          >
+            <IoIosSend />
+          </button>
+        </div>  
       </div>
     </div>
   );
