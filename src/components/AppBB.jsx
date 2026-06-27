@@ -24,6 +24,7 @@ import VSCode from "./VSCode";
 import { RoomProvider, useMyPresence, useOthers } from "@liveblocks/react";
 import { client } from "../../liveblocks.config";
 import { GiArrowCursor } from "react-icons/gi";
+import useRealtimeSync from "../useRealtimeSync";
 
 const CustomCodeEditor = React.lazy(() => import("./CodeEditor"));
 
@@ -87,7 +88,7 @@ const AppBContent = ({ projectId }) => {
       if (!presence?.cursor) return null;
       return (
         <div
-          key={id}
+          key={`${id}-elian-${presence.color}`}
           className="pointer-events-none fixed z-[9999]"
           style={{
             left: presence.cursor.x,
@@ -333,6 +334,18 @@ const AppBContent = ({ projectId }) => {
       setPreviewUrl(newPreviewUrl);
     }
   }, [selectedPage, id, isAuthenticated, projectAuthorId]);
+
+  useRealtimeSync({
+    roomId: id,
+
+    path: "droppedElements",
+
+    value: droppedElements,
+
+    onRemoteChange: setDroppedElements,
+
+    delay: 700,
+  });
 
   // ========== REMOVER ESTILOS GLOBALES ==========
   const removeGlobalStylesRecursively = (elements, globalStyles) => {

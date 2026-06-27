@@ -1,9 +1,9 @@
-// liveblocks.config.js
+// liveblocks.config.ts
 import { createClient } from "@liveblocks/client";
+import { LiveList, LiveObject } from "@liveblocks/client";
+
+// Declarar los tipos de Storage globalmente
 
 export const client = createClient({
-  publicApiKey: "pk_prod_3YTIp5Io9lBV9mFi8Vs8vKJjql6sukhzjdMNjJbXkcmIzJFIb8mDxm0juqmPUvHL",
-  
+  publicApiKey: "pk_dev_m6AZgPFEcMME2P4w8kekz_Qb5KipnVRrR5rkVtcfjsm8Kal8k2tgsJp8ySysc-WB",
 });
-
-// En AppB.jsx, importa desde @liveblocks/react directamenteñ
