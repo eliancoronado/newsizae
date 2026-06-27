@@ -4,28 +4,36 @@ import { auth, db } from "./firebase";
 
 export default function useRealtimeSync({
   roomId,
+  selectedPage,
   path,
   value,
   onRemoteChange,
   delay = 600,
 }) {
   const timeout = useRef(null);
-
   const lastLocalValue = useRef(null);
-
   const lastRemoteTimestamp = useRef(0);
+  const isSending = useRef(false);
+  const isReceiving = useRef(false);
 
-  const sending = useRef(false);
+  // Obtener UID del usuario actual de forma estable
+  const currentUid = auth.currentUser?.uid;
 
   // -----------------------------
-  // ESCUCHAR CAMBIOS
+  // ESCUCHAR CAMBIOS REMOTOS
   // -----------------------------
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId || !selectedPage || !currentUid) return;
 
-    const roomRef = ref(db, `rooms/${roomId}/${path}`);
+    const roomRef = ref(db, `rooms/${roomId}/${selectedPage}/${path}`);
 
     const unsubscribe = onValue(roomRef, (snapshot) => {
+      // Si estamos enviando, ignorar
+      if (isSending.current) {
+        console.log("⏳ Ignorando cambio remoto (estamos enviando)");
+        return;
+      }
+
       if (!snapshot.exists()) return;
 
       const data = snapshot.val();
@@ -33,62 +41,115 @@ export default function useRealtimeSync({
       if (!data) return;
 
       // Ignorar mis propios cambios
-      if (data.updatedBy === auth.currentUser?.uid) return;
+      if (data.updatedBy === currentUid) {
+        console.log("⏳ Ignorando cambio propio (UID:", currentUid, ")");
+        return;
+      }
 
       // Ignorar versiones viejas
-      if (data.updatedAt <= lastRemoteTimestamp.current) return;
+      if (data.updatedAt <= lastRemoteTimestamp.current) {
+        console.log("⏳ Ignorando versión vieja o igual");
+        return;
+      }
 
+      console.log("📥 Recibiendo cambio remoto de:", data.updatedBy);
+
+      isReceiving.current = true;
+
+      // Actualizar timestamp
       lastRemoteTimestamp.current = data.updatedAt;
 
-      const remote = JSON.stringify(data.value);
-
-      const local = JSON.stringify(lastLocalValue.current);
-
-      // Si son iguales no hacer nada
-      if (remote === local) return;
-
-      lastLocalValue.current = data.value;
-
+      // Restaurar elementos (función recursiva)
       const restore = (elements = []) => {
         return elements.map((el) => ({
           ...el,
-
           children: restore(el.children || []),
         }));
       };
 
-      onRemoteChange(restore(data.value));
+      const restoredData = restore(data.value);
+
+      // Actualizar referencia local
+      lastLocalValue.current = restoredData;
+
+      // Aplicar cambio remoto
+      onRemoteChange(restoredData);
+
+      isReceiving.current = false;
     });
 
-    return () => unsubscribe();
-  }, [roomId]);
+    return () => {
+      unsubscribe();
+      // Limpiar timeouts al desmontar
+      clearTimeout(timeout.current);
+    };
+  }, [roomId, selectedPage, path, currentUid, onRemoteChange]);
 
   // -----------------------------
-  // ENVIAR CAMBIOS
+  // ENVIAR CAMBIOS LOCALES
   // -----------------------------
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId || !selectedPage || !currentUid) return;
 
-    const json = JSON.stringify(value);
+    // Si estamos recibiendo, no enviar
+    if (isReceiving.current) {
+      console.log("⏳ Recibiendo datos, no enviar");
+      return;
+    }
 
-    if (json === JSON.stringify(lastLocalValue.current)) return;
+    const valueStr = JSON.stringify(value);
+    const lastStr = JSON.stringify(lastLocalValue.current);
 
+    // Si no hay cambio, salir
+    if (valueStr === lastStr) {
+      return;
+    }
+
+    console.log("📤 Detectado cambio local, programando envío...");
+
+    // Actualizar referencia local ANTES del timeout
     lastLocalValue.current = value;
 
     clearTimeout(timeout.current);
 
     timeout.current = setTimeout(async () => {
-      sending.current = true;
+      try {
+        isSending.current = true;
 
-      await set(ref(db, `rooms/${roomId}/${path}`), {
-        value,
-        updatedBy: auth.currentUser?.uid,
-        updatedAt: Date.now(),
-      });
+        const newTimestamp = Date.now();
 
-      sending.current = false;
+        await set(ref(db, `rooms/${roomId}/${selectedPage}/${path}`), {
+          value,
+          updatedBy: currentUid,
+          updatedAt: newTimestamp,
+        });
+
+        // Actualizar timestamp local después del envío exitoso
+        lastRemoteTimestamp.current = newTimestamp;
+
+        console.log("✅ Cambio enviado correctamente");
+      } catch (error) {
+        console.error("❌ Error al enviar cambio:", error);
+        // Revertir lastLocalValue si falló el envío
+        lastLocalValue.current = null;
+      } finally {
+        isSending.current = false;
+      }
     }, delay);
 
-    return () => clearTimeout(timeout.current);
-  }, [value]);
+    return () => {
+      clearTimeout(timeout.current);
+    };
+  }, [value, roomId, selectedPage, path, currentUid, delay]);
+
+  // -----------------------------
+  // LIMPIEZA AL DESMONTAR
+  // -----------------------------
+  useEffect(() => {
+    return () => {
+      clearTimeout(timeout.current);
+      isSending.current = false;
+      isReceiving.current = false;
+    };
+  }, []);
 }

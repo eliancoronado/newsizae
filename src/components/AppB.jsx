@@ -25,6 +25,8 @@ import { RoomProvider, useMyPresence, useOthers } from "@liveblocks/react";
 import { client } from "../../liveblocks.config";
 import { GiArrowCursor } from "react-icons/gi";
 import useRealtimeSync from "../useRealtimeSync";
+import useRealtimeUIState from "../hooks/useRealtimeUIStateW";
+import { LiveObject } from "@liveblocks/client";
 
 const CustomCodeEditor = React.lazy(() => import("./CodeEditor"));
 
@@ -144,6 +146,8 @@ const AppBContent = ({ projectId }) => {
     setSelectedPage,
     mode,
     setMode,
+    selectedElement,
+    setSelectedElement,
   } = useStore();
 
   const [selectedGS, setSelectedGS] = useState(null);
@@ -337,6 +341,7 @@ const AppBContent = ({ projectId }) => {
 
   useRealtimeSync({
     roomId: id,
+    selectedPage: selectedPage,
 
     path: "droppedElements",
 
@@ -345,6 +350,15 @@ const AppBContent = ({ projectId }) => {
     onRemoteChange: setDroppedElements,
 
     delay: 700,
+  });
+
+  useRealtimeUIState({
+    mode,
+    setMode,
+    selectedPage,
+    setSelectedPage,
+    selectedElement,
+    setSelectedElement,
   });
 
   // ========== REMOVER ESTILOS GLOBALES ==========
@@ -755,6 +769,13 @@ const AppB = () => {
         cursor: null,
         name: userName,
         color: userColor,
+      }}
+      initialStorage={{
+        uiState: new LiveObject({
+          mode: "design",
+          selectedPage: "index",
+          selectedElement: null,
+        }),
       }}
     >
       <AppBContent projectId={id} />
