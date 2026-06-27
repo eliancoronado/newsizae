@@ -1,11 +1,10 @@
-// AppB.jsx - Versión modificada para aceptar token por URL
 import SidebarB from "./SidebarB";
 import LeftPanel from "./LeftPanel";
 import RightPanel from "./RightPanel";
 import CentralPanel from "./CentralPanel";
 import useAppManager from "../hooks/useAppManager";
-import React, { useEffect, useState, Suspense } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import React, { useEffect, useState, Suspense, useRef } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import BlocklyComponent from "./blockly/BlocklyComponent";
 import useStore from "../store/store";
 import RGS from "./GStyles/RPGS";
@@ -15,24 +14,104 @@ import { ref, get, set } from "firebase/database";
 import { db } from "../firebase";
 import { auth } from "../firebase";
 import { useFullscreen } from "../hooks/useFullscreen";
-import { onAuthStateChanged, signInWithCustomToken } from "firebase/auth";
+import { onAuthStateChanged } from "firebase/auth";
 import { generateAndSaveProject } from "../utils/htmlGenerator";
 import DeviceWindow from "./DeviceWindow";
 import { addProjectHistory } from "../utils/projectsService";
-import { generateCustomToken } from "../utils/generateCustomToken";
 import ChatGPT from "./Creador";
 import CustomCodeEditorr from "./JSEditor";
 import VSCode from "./VSCode";
+import { RoomProvider, useMyPresence, useOthers } from "@liveblocks/react";
+import { client } from "../../liveblocks.config";
+import { GiArrowCursor } from "react-icons/gi";
 
 const CustomCodeEditor = React.lazy(() => import("./CodeEditor"));
 
-const AppBB = () => {
+// ============================================================
+// COMPONENTE INTERNO - Contiene toda la lógica y hooks de Liveblocks
+// ============================================================
+const AppBContent = ({ projectId }) => {
   const [loading, setLoading] = useState(false);
   const { id } = useParams();
-  const [searchParams] = useSearchParams();
-  const tokenFromUrl = searchParams.get("token");
-  const uidFromUrl = searchParams.get("uid");
+  const navigate = useNavigate();
 
+  // ========== HOOKS DE LIVEBLOCKS (AHORA DENTRO DEL ROOMPROVIDER) ==========
+  const [myPresence, updateMyPresence] = useMyPresence();
+  const others = useOthers();
+  const appRef = useRef(null);
+
+  // ========== ESTADO PARA EL USUARIO ==========
+  const [userName, setUserName] = useState("Usuario");
+  const [userColor] = useState(() => {
+    const colors = [
+      "#FF6B6B",
+      "#4ECDC4",
+      "#45B7D1",
+      "#96CEB4",
+      "#FFEAA7",
+      "#DDA0DD",
+      "#98D8C8",
+      "#F7DC6F",
+    ];
+    return colors[Math.floor(Math.random() * colors.length)];
+  });
+
+  useEffect(() => {
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      setUserName(currentUser.displayName || currentUser.email || "Usuario");
+    }
+  }, []);
+
+  // ========== MANEJO DEL MOUSE PARA PRESENCIA ==========
+  const handleGlobalMouseMove = (e) => {
+    if (!appRef.current) return;
+    const rect = appRef.current.getBoundingClientRect();
+    updateMyPresence({
+      cursor: {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      },
+      name: userName,
+      color: userColor,
+    });
+  };
+
+  const handleMouseLeave = () => {
+    updateMyPresence({ cursor: null });
+  };
+
+  // ========== RENDERIZAR CURSORES DE OTROS USUARIOS ==========
+  const renderGlobalCursors = () => {
+    return others.map(({ id, presence }) => {
+      if (!presence?.cursor) return null;
+      return (
+        <div
+          key={id}
+          className="pointer-events-none fixed z-[9999]"
+          style={{
+            left: presence.cursor.x,
+            top: presence.cursor.y,
+            transform: "translate(-4px, -4px)",
+          }}
+        >
+          <GiArrowCursor className={`text-[${presence.color} || "#FF6B6B"}]`} />
+          <div
+            className="absolute left-6 top-0 px-2 py-0.5 rounded text-xs whitespace-nowrap"
+            style={{
+              backgroundColor: presence.color || "#FF6B6B",
+              color: "white",
+              fontFamily: "sans-serif",
+            }}
+          >
+            {presence.name || "Usuario"}
+          </div>
+        </div>
+      );
+    });
+  };
+
+  // ========== HOOKS DE LA APLICACIÓN ==========
   const {
     handleStyleChange,
     handleTextChange,
@@ -74,106 +153,28 @@ const AppBB = () => {
   const [previewUrl, setPreviewUrl] = useState("");
   const [userRole, setUserRole] = useState(null);
   const [projectAuthorId, setProjectAuthorId] = useState(null);
-  const [authInitialized, setAuthInitialized] = useState(false);
-  const [engine, setEngine] = useState("baboo");
 
-  const navigate = useNavigate();
-
-  // Nueva función para autenticar con token de URL
-  // Nueva función para autenticar con uid de URL
-  const authenticateWithUid = async (uid) => {
-    if (!uid) return false;
-
-    try {
-      console.log("🔐 Generando Custom Token para uid:", uid);
-      const customToken = await generateCustomToken(uid);
-
-      if (!customToken) {
-        console.error("❌ No se pudo generar el token");
-        return false;
-      }
-
-      console.log("✅ Token generado, autenticando...");
-      await signInWithCustomToken(auth, customToken);
-      console.log("✅ Autenticación exitosa con token generado");
-      return true;
-    } catch (error) {
-      console.error("❌ Error autenticando:", error);
-      return false;
-    }
-  };
-
-  // Verificar autenticación al cargar (modificada)
+  // ========== VERIFICAR AUTENTICACIÓN ==========
   useEffect(() => {
-    const initAuth = async () => {
-      // 1. Si hay uid en URL, generar token y autenticar
-      if (uidFromUrl) {
-        console.log("🔄 Autenticando con uid de URL:", uidFromUrl);
-        const authSuccess = await authenticateWithUid(uidFromUrl);
-        if (authSuccess) {
-          setIsAuthenticated(true);
-          setAuthInitialized(true);
-          toast.success("Sesión iniciada correctamente");
-          return;
-        }
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        console.log("✅ Usuario autenticado:", user.uid);
+        setIsAuthenticated(true);
+      } else {
+        console.log("❌ No hay usuario autenticado");
+        navigate("/");
+        setIsAuthenticated(false);
+        toast.error("Debes iniciar sesión para acceder a este proyecto");
       }
+    });
+    return () => unsubscribe();
+  }, [navigate]);
 
-      // 2. Si hay token en URL, usarlo directamente
-      if (tokenFromUrl) {
-        const authSuccess = await authenticateWithToken();
-        if (authSuccess) {
-          setIsAuthenticated(true);
-          setAuthInitialized(true);
-          toast.success("Sesión iniciada correctamente");
-          return;
-        }
-      }
-
-      // 3. Fallback a autenticación normal
-      const unsubscribe = onAuthStateChanged(auth, (user) => {
-        if (user) {
-          console.log("✅ Usuario autenticado por Firebase:", user.uid);
-          setIsAuthenticated(true);
-        } else {
-          console.log("❌ No hay usuario autenticado");
-          if (uidFromUrl) {
-            // Último intento: sesión temporal
-            console.log("🔄 Creando sesión temporal para uid:", uidFromUrl);
-            localStorage.setItem("tempUid", uidFromUrl);
-            localStorage.setItem("tempSession", "true");
-            setIsAuthenticated(true);
-          } else {
-            navigate("/");
-            toast.error("Debes iniciar sesión para acceder a este proyecto");
-          }
-        }
-        setAuthInitialized(true);
-      });
-
-      return () => unsubscribe();
-    };
-
-    initAuth();
-  }, [tokenFromUrl, uidFromUrl]);
-
-  // Función para obtener el uid actual (de auth o de URL)
-  const getCurrentUid = () => {
-    const user = auth.currentUser;
-    if (user) return user.uid;
-    if (uidFromUrl) return uidFromUrl;
-    return localStorage.getItem("tempUid");
-  };
-
-  // ========== Cargar proyecto desde Firebase ==========
+  // ========== CARGAR PROYECTO DESDE FIREBASE ==========
   useEffect(() => {
     const fetchProject = async () => {
-      if (!authInitialized) {
-        console.log("⏳ Esperando autenticación...");
-        return;
-      }
-
       if (!isAuthenticated) {
-        console.log("❌ No autenticado");
+        console.log("⏳ Esperando autenticación...");
         return;
       }
 
@@ -184,8 +185,17 @@ const AppBB = () => {
 
       setLoading(true);
       try {
-        const currentUid = getCurrentUid();
-        console.log("📡 Cargando proyecto:", id, "para usuario:", currentUid);
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          throw new Error("No hay usuario autenticado");
+        }
+
+        console.log(
+          "📡 Cargando proyecto:",
+          id,
+          "para usuario:",
+          currentUser.uid,
+        );
 
         const projectRef = ref(db, `projects/${id}`);
         const snapshot = await get(projectRef);
@@ -200,12 +210,12 @@ const AppBB = () => {
         let hasAccess = false;
         let role = null;
 
-        // Verificar permisos (con el uid actual)
-        if (project.authorId === currentUid) {
+        // Verificar permisos
+        if (project.authorId === currentUser.uid) {
           hasAccess = true;
           role = "owner";
-        } else if (project.share && project.share[currentUid]) {
-          const sharedData = project.share[currentUid];
+        } else if (project.share && project.share[currentUser.uid]) {
+          const sharedData = project.share[currentUser.uid];
           if (sharedData.role === "editor") {
             hasAccess = true;
             role = "editor";
@@ -215,8 +225,7 @@ const AppBB = () => {
             toast.info("Tienes acceso de solo lectura a este proyecto");
           }
         } else {
-          // Verificar en sharedProjects (para compatibilidad)
-          const sharedRef = ref(db, `sharedProjects/${currentUid}/${id}`);
+          const sharedRef = ref(db, `sharedProjects/${currentUser.uid}/${id}`);
           const sharedSnapshot = await get(sharedRef);
           if (sharedSnapshot.exists()) {
             const sharedData = sharedSnapshot.val();
@@ -225,14 +234,6 @@ const AppBB = () => {
               role = "editor";
             }
           }
-        }
-
-        // Si hay token en URL pero no tiene permisos, dar acceso de lectura
-        if (!hasAccess && tokenFromUrl) {
-          console.log("⚠️ Acceso con token - modo lectura");
-          hasAccess = true;
-          role = "reader";
-          toast.info("Acceso de solo lectura mediante token");
         }
 
         if (!hasAccess) {
@@ -245,13 +246,22 @@ const AppBB = () => {
         setUserRole(role);
         setProjectAuthorId(project.authorId);
 
-        // Guardar el proyecto con el rol
         const projectWithRole = { ...project, userRole: role };
-        console.log("📊 Datos del proyecto:", projectWithRole);
         setProjectData(projectWithRole);
-        setEngine(project.engine || "baboo");
 
-        // Generar URL de preview
+        if (
+          (role === "editor" || role === "owner") &&
+          project.authorId !== currentUser.uid
+        ) {
+          await addProjectHistory(
+            id,
+            currentUser.uid,
+            currentUser.displayName || "Usuario",
+            `Abrió el proyecto "${project.name}"`,
+            project.name,
+          );
+        }
+
         const currentPageName = selectedPage || "index";
         const ownerId = project.authorId;
         const previewKey = `users/${ownerId}/projects/${id}/pages/${currentPageName}.html`;
@@ -301,20 +311,30 @@ const AppBB = () => {
     };
 
     fetchProject();
-  }, [id, selectedPage, isAuthenticated, authInitialized, tokenFromUrl]);
+  }, [
+    id,
+    selectedPage,
+    isAuthenticated,
+    navigate,
+    setProjectData,
+    setDroppedElements,
+    setUpdatedOElements,
+    setBlockyCode,
+    setWorkspaceState,
+    setSelectedPage,
+  ]);
 
-  // Actualizar preview URL cuando cambia la página seleccionada
+  // ========== ACTUALIZAR PREVIEW URL ==========
   useEffect(() => {
     if (!isAuthenticated || !id || !projectAuthorId) return;
-    const currentUid = getCurrentUid();
-    if (currentUid && selectedPage) {
+    if (selectedPage) {
       const previewKey = `users/${projectAuthorId}/projects/${id}/pages/${selectedPage}.html`;
       const newPreviewUrl = `https://mis-proyectos-sizae-app.s3.amazonaws.com/${previewKey}`;
       setPreviewUrl(newPreviewUrl);
     }
   }, [selectedPage, id, isAuthenticated, projectAuthorId]);
 
-  // Función para remover estilos globales recursivamente (para preview)
+  // ========== REMOVER ESTILOS GLOBALES ==========
   const removeGlobalStylesRecursively = (elements, globalStyles) => {
     if (!elements || !Array.isArray(elements)) return [];
 
@@ -348,11 +368,10 @@ const AppBB = () => {
     });
   };
 
-  // ========== Guardar proyecto en Firebase ==========
+  // ========== GUARDAR PROYECTO ==========
   const handleUpdateProject = async () => {
     if (!id) return;
 
-    // Usar userRole del estado, no de projectData
     if (userRole === "reader") {
       toast.error(
         "No tienes permiso para guardar cambios en este proyecto (solo lectura)",
@@ -370,7 +389,6 @@ const AppBB = () => {
         return;
       }
 
-      // Construir objeto actualizado del proyecto
       let updatedProject = { ...projectData };
       if (!updatedProject.pages) updatedProject.pages = [];
 
@@ -413,7 +431,6 @@ const AppBB = () => {
         await set(userProjectRef, true);
       }
 
-      // Registrar el cambio en el historial SOLO si el usuario NO es el autor original
       if (updatedProject.authorId !== currentUser.uid) {
         await addProjectHistory(
           id,
@@ -434,6 +451,7 @@ const AppBB = () => {
     }
   };
 
+  // ========== PREVIEW ==========
   const handlePreview = async () => {
     if (!selectedPage) {
       toast.error("Selecciona una página para previsualizar");
@@ -486,27 +504,33 @@ const AppBB = () => {
   };
 
   const handleGenerateCode = (code, state) => {
+    console.log("Código generado desde Blockly/JSEditor:", code);
     setBlockyCode(code);
     setWorkspaceState(state);
   };
 
-  // Determinar si el usuario puede editar (owner o editor)
   const canEdit = userRole === "owner" || userRole === "editor";
   const isReader = userRole === "reader";
 
+  // ========== RENDER ==========
   return (
-    <div className="w-full h-screen touch-none select-none flex items-center relative bg-white">
+    <div
+      ref={appRef}
+      className="w-full h-screen touch-none select-none flex items-center relative bg-white"
+      onMouseMove={handleGlobalMouseMove}
+      onMouseLeave={handleMouseLeave}
+    >
       {loading && (
         <div className="z-10 w-full h-full top-0 left-0 absolute flex items-center justify-center bg-opacity-10 backdrop-blur-sm bg-black">
           <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
         </div>
       )}
 
-      {/* Badge de rol */}
+      {renderGlobalCursors()}
+
       {userRole && userRole !== "owner" && (
         <div className="fixed top-4 right-4 z-50 bg-yellow-500/10 backdrop-blur-sm rounded-full px-3 py-1 text-xs text-yellow-300">
           {userRole === "editor" ? "Modo Editor" : "Solo Lectura"}
-          {tokenFromUrl && " (Token)"}
         </div>
       )}
 
@@ -523,7 +547,6 @@ const AppBB = () => {
             })) || [{ name: "index.html", content: "" }]
           }
           onSave={async (updatedFiles) => {
-            // 🔥 CORREGIDO: Guardar TODOS los archivos
             const projectRef = ref(db, `projects/${id}`);
             const snapshot = await get(projectRef);
             const projectData = snapshot.val() || {};
@@ -548,7 +571,6 @@ const AppBB = () => {
             );
           }}
           onPublish={async (updatedFiles) => {
-            // Lo mismo que onSave pero con mensaje de publicación
             const projectRef = ref(db, `projects/${id}`);
             const snapshot = await get(projectRef);
             const projectData = snapshot.val() || {};
@@ -675,4 +697,56 @@ const AppBB = () => {
   );
 };
 
-export default AppBB;
+// ============================================================
+// COMPONENTE PRINCIPAL - Envuelve todo con RoomProvider
+// ============================================================
+const AppB = () => {
+  const { id } = useParams();
+
+  // Estado para el usuario (para initialPresence)
+  const [userName, setUserName] = useState("Usuario");
+  const [userColor] = useState(() => {
+    const colors = [
+      "#FF6B6B",
+      "#4ECDC4",
+      "#45B7D1",
+      "#96CEB4",
+      "#FFEAA7",
+      "#DDA0DD",
+      "#98D8C8",
+      "#F7DC6F",
+    ];
+    return colors[Math.floor(Math.random() * colors.length)];
+  });
+
+  useEffect(() => {
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      setUserName(currentUser.displayName || currentUser.email || "Usuario");
+    }
+  }, []);
+
+  // Si no hay ID, mostramos un mensaje o redirigimos
+  if (!id) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        Cargando proyecto...
+      </div>
+    );
+  }
+
+  return (
+    <RoomProvider
+      id={id}
+      initialPresence={{
+        cursor: null,
+        name: userName,
+        color: userColor,
+      }}
+    >
+      <AppBContent projectId={id} />
+    </RoomProvider>
+  );
+};
+
+export default AppB;

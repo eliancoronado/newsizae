@@ -3,7 +3,7 @@ import LeftPanel from "./LeftPanel";
 import RightPanel from "./RightPanel";
 import CentralPanel from "./CentralPanel";
 import useAppManager from "../hooks/useAppManager";
-import React, { useEffect, useState, Suspense } from "react";
+import React, { useEffect, useState, Suspense, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import BlocklyComponent from "./blockly/BlocklyComponent";
 import useStore from "../store/store";
@@ -21,13 +21,97 @@ import { addProjectHistory } from "../utils/projectsService";
 import ChatGPT from "./Creador";
 import CustomCodeEditorr from "./JSEditor";
 import VSCode from "./VSCode";
+import { RoomProvider, useMyPresence, useOthers } from "@liveblocks/react";
+import { client } from "../../liveblocks.config";
+import { GiArrowCursor } from "react-icons/gi";
 
 const CustomCodeEditor = React.lazy(() => import("./CodeEditor"));
 
-const AppB = () => {
+// ============================================================
+// COMPONENTE INTERNO - Contiene toda la lógica y hooks de Liveblocks
+// ============================================================
+const AppBContent = ({ projectId }) => {
   const [loading, setLoading] = useState(false);
   const { id } = useParams();
+  const navigate = useNavigate();
 
+  // ========== HOOKS DE LIVEBLOCKS (AHORA DENTRO DEL ROOMPROVIDER) ==========
+  const [myPresence, updateMyPresence] = useMyPresence();
+  const others = useOthers();
+  const appRef = useRef(null);
+
+  // ========== ESTADO PARA EL USUARIO ==========
+  const [userName, setUserName] = useState("Usuario");
+  const [userColor] = useState(() => {
+    const colors = [
+      "#FF6B6B",
+      "#4ECDC4",
+      "#45B7D1",
+      "#96CEB4",
+      "#FFEAA7",
+      "#DDA0DD",
+      "#98D8C8",
+      "#F7DC6F",
+    ];
+    return colors[Math.floor(Math.random() * colors.length)];
+  });
+
+  useEffect(() => {
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      setUserName(currentUser.displayName || currentUser.email || "Usuario");
+    }
+  }, []);
+
+  // ========== MANEJO DEL MOUSE PARA PRESENCIA ==========
+  const handleGlobalMouseMove = (e) => {
+    if (!appRef.current) return;
+    const rect = appRef.current.getBoundingClientRect();
+    updateMyPresence({
+      cursor: {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      },
+      name: userName,
+      color: userColor,
+    });
+  };
+
+  const handleMouseLeave = () => {
+    updateMyPresence({ cursor: null });
+  };
+
+  // ========== RENDERIZAR CURSORES DE OTROS USUARIOS ==========
+  const renderGlobalCursors = () => {
+    return others.map(({ id, presence }) => {
+      if (!presence?.cursor) return null;
+      return (
+        <div
+          key={id}
+          className="pointer-events-none fixed z-[9999]"
+          style={{
+            left: presence.cursor.x,
+            top: presence.cursor.y,
+            transform: "translate(-4px, -4px)",
+          }}
+        >
+          <GiArrowCursor className={`text-[${presence.color} || "#FF6B6B"}]`} />
+          <div
+            className="absolute left-6 top-0 px-2 py-0.5 rounded text-xs whitespace-nowrap"
+            style={{
+              backgroundColor: presence.color || "#FF6B6B",
+              color: "white",
+              fontFamily: "sans-serif",
+            }}
+          >
+            {presence.name || "Usuario"}
+          </div>
+        </div>
+      );
+    });
+  };
+
+  // ========== HOOKS DE LA APLICACIÓN ==========
   const {
     handleStyleChange,
     handleTextChange,
@@ -67,12 +151,10 @@ const AppB = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [deviceShow, setDeviceShow] = useState(false);
   const [previewUrl, setPreviewUrl] = useState("");
-  const [userRole, setUserRole] = useState(null); // Estado para el rol
-  const [projectAuthorId, setProjectAuthorId] = useState(null); // Guardar el authorId del proyecto
+  const [userRole, setUserRole] = useState(null);
+  const [projectAuthorId, setProjectAuthorId] = useState(null);
 
-  const navigate = useNavigate();
-
-  // Verificar autenticación al cargar
+  // ========== VERIFICAR AUTENTICACIÓN ==========
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
@@ -86,26 +168,9 @@ const AppB = () => {
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [navigate]);
 
-  // Agregar un listener para activar pantalla completa con el primer clic
-/*
-  useEffect(() => {
-    const handleFirstClick = () => {
-      enterFullscreen();
-      document.removeEventListener("click", handleFirstClick);
-    };
-
-    document.addEventListener("click", handleFirstClick);
-    document.addEventListener("touchstart", handleFirstClick);
-    return () => {
-      document.removeEventListener("click", handleFirstClick);
-      document.removeEventListener("touchstart", handleFirstClick);
-    };
-  }, [enterFullscreen]);
-  */
-
-  // ========== Cargar proyecto desde Firebase ==========
+  // ========== CARGAR PROYECTO DESDE FIREBASE ==========
   useEffect(() => {
     const fetchProject = async () => {
       if (!isAuthenticated) {
@@ -160,7 +225,6 @@ const AppB = () => {
             toast.info("Tienes acceso de solo lectura a este proyecto");
           }
         } else {
-          // Verificar en sharedProjects (para compatibilidad)
           const sharedRef = ref(db, `sharedProjects/${currentUser.uid}/${id}`);
           const sharedSnapshot = await get(sharedRef);
           if (sharedSnapshot.exists()) {
@@ -180,13 +244,11 @@ const AppB = () => {
 
         console.log("✅ Proyecto cargado con rol:", role);
         setUserRole(role);
-        setProjectAuthorId(project.authorId); // Guardar el authorId del proyecto
+        setProjectAuthorId(project.authorId);
 
-        // Guardar el proyecto con el rol
         const projectWithRole = { ...project, userRole: role };
         setProjectData(projectWithRole);
 
-        // Si es editor o owner, registrar que abrió el proyecto (solo si no es owner)
         if (
           (role === "editor" || role === "owner") &&
           project.authorId !== currentUser.uid
@@ -200,9 +262,8 @@ const AppB = () => {
           );
         }
 
-        // Generar URL de preview para la página actual
         const currentPageName = selectedPage || "index";
-        const ownerId = project.authorId; // El dueño original del proyecto
+        const ownerId = project.authorId;
         const previewKey = `users/${ownerId}/projects/${id}/pages/${currentPageName}.html`;
         const previewUrlGenerated = `https://mis-proyectos-sizae-app.s3.amazonaws.com/${previewKey}`;
         setPreviewUrl(previewUrlGenerated);
@@ -250,20 +311,30 @@ const AppB = () => {
     };
 
     fetchProject();
-  }, [id, selectedPage, isAuthenticated]);
+  }, [
+    id,
+    selectedPage,
+    isAuthenticated,
+    navigate,
+    setProjectData,
+    setDroppedElements,
+    setUpdatedOElements,
+    setBlockyCode,
+    setWorkspaceState,
+    setSelectedPage,
+  ]);
 
-  // Actualizar preview URL cuando cambia la página seleccionada
+  // ========== ACTUALIZAR PREVIEW URL ==========
   useEffect(() => {
     if (!isAuthenticated || !id || !projectAuthorId) return;
-    const currentUser = auth.currentUser;
-    if (currentUser && selectedPage) {
+    if (selectedPage) {
       const previewKey = `users/${projectAuthorId}/projects/${id}/pages/${selectedPage}.html`;
       const newPreviewUrl = `https://mis-proyectos-sizae-app.s3.amazonaws.com/${previewKey}`;
       setPreviewUrl(newPreviewUrl);
     }
   }, [selectedPage, id, isAuthenticated, projectAuthorId]);
 
-  // Función para remover estilos globales recursivamente (para preview)
+  // ========== REMOVER ESTILOS GLOBALES ==========
   const removeGlobalStylesRecursively = (elements, globalStyles) => {
     if (!elements || !Array.isArray(elements)) return [];
 
@@ -297,11 +368,10 @@ const AppB = () => {
     });
   };
 
-  // ========== Guardar proyecto en Firebase ==========
+  // ========== GUARDAR PROYECTO ==========
   const handleUpdateProject = async () => {
     if (!id) return;
 
-    // Usar userRole del estado, no de projectData
     if (userRole === "reader") {
       toast.error(
         "No tienes permiso para guardar cambios en este proyecto (solo lectura)",
@@ -319,7 +389,6 @@ const AppB = () => {
         return;
       }
 
-      // Construir objeto actualizado del proyecto
       let updatedProject = { ...projectData };
       if (!updatedProject.pages) updatedProject.pages = [];
 
@@ -362,7 +431,6 @@ const AppB = () => {
         await set(userProjectRef, true);
       }
 
-      // Registrar el cambio en el historial SOLO si el usuario NO es el autor original
       if (updatedProject.authorId !== currentUser.uid) {
         await addProjectHistory(
           id,
@@ -383,6 +451,7 @@ const AppB = () => {
     }
   };
 
+  // ========== PREVIEW ==========
   const handlePreview = async () => {
     if (!selectedPage) {
       toast.error("Selecciona una página para previsualizar");
@@ -440,19 +509,25 @@ const AppB = () => {
     setWorkspaceState(state);
   };
 
-  // Determinar si el usuario puede editar (owner o editor)
   const canEdit = userRole === "owner" || userRole === "editor";
   const isReader = userRole === "reader";
 
+  // ========== RENDER ==========
   return (
-    <div className="w-full h-screen touch-none select-none flex items-center relative bg-white">
+    <div
+      ref={appRef}
+      className="w-full h-screen touch-none select-none flex items-center relative bg-white"
+      onMouseMove={handleGlobalMouseMove}
+      onMouseLeave={handleMouseLeave}
+    >
       {loading && (
         <div className="z-10 w-full h-full top-0 left-0 absolute flex items-center justify-center bg-opacity-10 backdrop-blur-sm bg-black">
           <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
         </div>
       )}
 
-      {/* Badge de rol - usar userRole directamente */}
+      {renderGlobalCursors()}
+
       {userRole && userRole !== "owner" && (
         <div className="fixed top-4 right-4 z-50 bg-yellow-500/10 backdrop-blur-sm rounded-full px-3 py-1 text-xs text-yellow-300">
           {userRole === "editor" ? "Modo Editor" : "Solo Lectura"}
@@ -472,7 +547,6 @@ const AppB = () => {
             })) || [{ name: "index.html", content: "" }]
           }
           onSave={async (updatedFiles) => {
-            // 🔥 CORREGIDO: Guardar TODOS los archivos
             const projectRef = ref(db, `projects/${id}`);
             const snapshot = await get(projectRef);
             const projectData = snapshot.val() || {};
@@ -497,7 +571,6 @@ const AppB = () => {
             );
           }}
           onPublish={async (updatedFiles) => {
-            // Lo mismo que onSave pero con mensaje de publicación
             const projectRef = ref(db, `projects/${id}`);
             const snapshot = await get(projectRef);
             const projectData = snapshot.val() || {};
@@ -621,6 +694,58 @@ const AppB = () => {
         </>
       )}
     </div>
+  );
+};
+
+// ============================================================
+// COMPONENTE PRINCIPAL - Envuelve todo con RoomProvider
+// ============================================================
+const AppB = () => {
+  const { id } = useParams();
+
+  // Estado para el usuario (para initialPresence)
+  const [userName, setUserName] = useState("Usuario");
+  const [userColor] = useState(() => {
+    const colors = [
+      "#FF6B6B",
+      "#4ECDC4",
+      "#45B7D1",
+      "#96CEB4",
+      "#FFEAA7",
+      "#DDA0DD",
+      "#98D8C8",
+      "#F7DC6F",
+    ];
+    return colors[Math.floor(Math.random() * colors.length)];
+  });
+
+  useEffect(() => {
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      setUserName(currentUser.displayName || currentUser.email || "Usuario");
+    }
+  }, []);
+
+  // Si no hay ID, mostramos un mensaje o redirigimos
+  if (!id) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        Cargando proyecto...
+      </div>
+    );
+  }
+
+  return (
+    <RoomProvider
+      id={id}
+      initialPresence={{
+        cursor: null,
+        name: userName,
+        color: userColor,
+      }}
+    >
+      <AppBContent projectId={id} />
+    </RoomProvider>
   );
 };
 
