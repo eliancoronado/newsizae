@@ -194,7 +194,7 @@ const LeftPanel = ({ prid }) => {
   };
 
   return (
-    <div className="w-full h-full min-h-screen overflow-y-auto no-scroll col-span-1 bg-[#2B2B44] flex flex-col p-1.5 lg:p-4">
+    <div className="sidebar-left w-full h-full min-h-screen overflow-y-auto no-scroll col-span-1 bg-[#2B2B44] flex flex-col p-1.5 lg:p-4">
       {mode === "elements" && (
         <>
           <h2 className="text-[#FFC700] text-base lg:text-xl font-medium">
@@ -217,7 +217,7 @@ const LeftPanel = ({ prid }) => {
               filteredElements.map((element) => (
                 <div
                   key={element.id}
-                  className="w-full aspect-square flex flex-col items-center justify-center py-1.5 sm:gap-2 gap-1 text-white border border-[#FFC700] cursor-pointer"
+                  className="component-item w-full aspect-square flex flex-col items-center justify-center py-1.5 sm:gap-2 gap-1 text-white border border-[#FFC700] cursor-pointer"
                   draggable
                   onDragStart={(e) => handleDragStart(e, element)}
                   onTouchStart={(e) => handleTouchStart(e, element)}

@@ -14,6 +14,7 @@ import LoginApp from "./login/LoginApp.jsx";
 import { LiveblocksProvider } from "@liveblocks/react";
 import { client } from "../liveblocks.config";
 import AppBP from "./components/AppBP.jsx";
+import AppTTT from "./components/AppTTT.jsx";
 
 // Componente que envuelve toda la app con pantalla completa
 const AppWithFullscreen = () => {
@@ -49,6 +50,7 @@ registerServiceWorker();
           <Route path="/project/:id" element={<AppB />} />
           <Route path="/projects/:id" element={<AppBB />} />
           <Route path="/projecttt/:id" element={<AppBP />} />
+          <Route path="/projectt/:id" element={<AppTTT />} />
         </Routes>
       </Router>
     </LiveblocksProvider>

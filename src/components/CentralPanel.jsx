@@ -434,6 +434,7 @@ const CentralPanel = ({
 
   return (
     <div
+    id="menu"
       className={
         canEdit
           ? "w-full h-screen max-h-screen min-h-screen overflow-hidden col-span-2 relative flex items-center justify-center"
@@ -706,6 +707,7 @@ const CentralPanel = ({
         onTouchStart={handleStart}
       >
         <div
+        id="central-panel"
           className="relative overflow-y-auto thin-scroll h-full w-full"
           onDrop={(e) => handleDrop(e)}
           onTouchEnd={(e) => handleDrop(e)}

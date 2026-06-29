@@ -26,42 +26,48 @@ const SidebarB = () => {
           onClick={() => navigate("/dashboard")}
         />
         <div
+        id="add-element"
           className="w-full py-4 cursor-pointer hover:bg-[rgba(255,255,255,0.3)] flex items-center justify-center mt-8"
           onClick={() => setMode("elements")}
         >
           <IoMdAddCircleOutline className="text-3xl text-[#FFD966]" />
         </div>
         <div
+        id="ele-element"
           className="w-full py-4 cursor-pointer hover:bg-[rgba(255,255,255,0.3)] flex items-center justify-center"
           onClick={() => setMode("capas")}
         >
           <LuLayers className="text-2xl text-[#FFD966]" />
         </div>
         <div
+        id="ia-element"
           className="w-full py-4 cursor-pointer hover:bg-[rgba(255,255,255,0.3)] flex items-center justify-center"
           onClick={() => setMode("ia")}
         >
           <GoCopilot className="text-2xl text-[#FFD966]" />
         </div>
         <div
+        id="upl-element"
           className="w-full py-4 cursor-pointer hover:bg-[rgba(255,255,255,0.3)] flex items-center justify-center"
           onClick={() => setMode("files")}
         >
           <FaRegImages className="text-2xl text-[#FFD966]" />
         </div>
         <div
+        id="sty-element"
           className="w-full py-4 cursor-pointer hover:bg-[rgba(255,255,255,0.3)] flex items-center justify-center"
           onClick={() => setMode("GStyles")}
         >
           <MdOutlineStyle className="text-2xl text-[#FFD966]" />
         </div>
+        {/* 
         <div
           className="w-full py-4 cursor-pointer hover:bg-[rgba(255,255,255,0.3)] flex items-center justify-center"
           onClick={() => setMode("convertio")}
         >
           <SiConvertio className="text-2xl text-[#FFD966]" />
         </div>
-
+*/}
         {/* 🔄 CAMBIO AQUÍ: Verificar primero si es JavaScript */}
         {projectData?.language === "javascript" ? (
           <div
