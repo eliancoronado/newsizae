@@ -63,6 +63,7 @@ const RightPanel = ({
   handleRetAnimationChange,
   prid,
   gs,
+  isPlay,
 }) => {
   const {
     url,
