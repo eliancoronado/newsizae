@@ -14,7 +14,7 @@ import { ref, get, set } from "firebase/database";
 import { db } from "../firebase";
 import { auth } from "../firebase";
 import { useFullscreen } from "../hooks/useFullscreen";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, signInWithCustomToken } from "firebase/auth";
 import { generateAndSaveProject } from "../utils/htmlGenerator";
 import DeviceWindow from "./DeviceWindow";
 import { addProjectHistory } from "../utils/projectsService";
@@ -27,6 +27,7 @@ import { GiArrowCursor } from "react-icons/gi";
 import useRealtimeSync from "../useRealtimeSync";
 import useRealtimeUIState from "../hooks/useRealtimeUIStateW";
 import { LiveObject } from "@liveblocks/client";
+import { generateCustomToken } from "../utils/generateCustomToken";
 
 const CustomCodeEditor = React.lazy(() => import("./CodeEditor"));
 
@@ -159,20 +160,92 @@ const AppBContent = ({ projectId }) => {
   const [userRole, setUserRole] = useState(null);
   const [projectAuthorId, setProjectAuthorId] = useState(null);
 
-  // ========== VERIFICAR AUTENTICACIÓN ==========
+  // ========== VERIFICAR AUTENTICACIÓN CON PARAMS ==========
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        console.log("✅ Usuario autenticado:", user.uid);
+    let isMounted = true;
+
+    const checkAuth = async () => {
+      // Obtener userId de params
+      const params = new URLSearchParams(window.location.search);
+      const userId = params.get("uid");
+
+      // Verificar si hay usuario actual
+      const currentUser = auth.currentUser;
+
+      // Si NO hay usuario autenticado Y hay userId en params
+      if (!currentUser && userId) {
+        console.log(
+          "🔑 No hay sesión, intentando autenticar con userId:",
+          userId,
+        );
+
+        try {
+          const customToken = await generateCustomToken(userId);
+          if (customToken) {
+            await signInWithCustomToken(auth, customToken);
+            console.log("✅ Autenticado con userId:", userId);
+
+            if (isMounted) {
+              setIsAuthenticated(true);
+              toast.success("Sesión iniciada con el enlace");
+            }
+            return;
+          }
+        } catch (error) {
+          console.error("❌ Error autenticando con userId:", error);
+          if (isMounted) {
+            toast.error("Error al iniciar sesión con el enlace");
+          }
+        }
+      }
+
+      // Si hay usuario autenticado
+      if (currentUser && isMounted) {
+        console.log("✅ Usuario ya autenticado:", currentUser.uid);
         setIsAuthenticated(true);
-      } else {
-        console.log("❌ No hay usuario autenticado");
+        return;
+      }
+
+      // Si no hay usuario y no hay userId en params
+      if (!currentUser && !userId && isMounted) {
+        console.log("❌ No hay usuario autenticado ni userId en params");
         navigate("/");
-        setIsAuthenticated(false);
         toast.error("Debes iniciar sesión para acceder a este proyecto");
       }
+    };
+
+    checkAuth();
+
+    // Suscripción a cambios de autenticación
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (isMounted) {
+        if (user) {
+          console.log("🔄 Cambio de autenticación - Usuario:", user.uid);
+          setIsAuthenticated(true);
+        } else {
+          // Verificar si hay userId en params para reintentar
+          const params = new URLSearchParams(window.location.search);
+          const userId = params.get("uid");
+
+          if (userId) {
+            console.log(
+              "🔄 Usuario desconectado, reintentando con userId:",
+              userId,
+            );
+            await checkAuth();
+          } else {
+            setIsAuthenticated(false);
+            navigate("/");
+            toast.error("Sesión expirada");
+          }
+        }
+      }
     });
-    return () => unsubscribe();
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, [navigate]);
 
   // ========== CARGAR PROYECTO DESDE FIREBASE ==========
