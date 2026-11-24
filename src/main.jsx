@@ -15,6 +15,7 @@ import { LiveblocksProvider } from "@liveblocks/react";
 import { client } from "../liveblocks.config";
 import AppBP from "./components/AppBP.jsx";
 import AppTTT from "./components/AppTTT.jsx";
+import ServicioNoDisponible from "./components/ServicioND.jsx";
 
 // Componente que envuelve toda la app con pantalla completa
 const AppWithFullscreen = () => {
@@ -41,7 +42,8 @@ registerServiceWorker();
     <LiveblocksProvider publicApiKey={"pk_prod_3YTIp5Io9lBV9mFi8Vs8vKJjql6sukhzjdMNjJbXkcmIzJFIb8mDxm0juqmPUvHL"}>
       <Router>
         <Routes>
-          <Route path="/" element={<Login />} />
+          <Route path="/" element={<ServicioNoDisponible />} />
+          {/*<Route path="/" element={<Login />} />*/}
           <Route path="/loginapp" element={<LoginApp />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/profile/:uid" element={<ProfilePage />} />

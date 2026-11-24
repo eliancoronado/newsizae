@@ -5,7 +5,8 @@ import { IoIosSend } from "react-icons/io";
 // ============================================================
 //  CONSTANTES
 // ============================================================
-const API_KEY = "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";
+//const API_KEY = "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";
+const API_KEY = "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";
 
 // ============================================================
 //  UTILIDADES DE MARKDOWN (versión web)
@@ -536,7 +537,7 @@ const ChatUI = () => {
             Authorization: `Bearer ${API_KEY}`,
           },
           body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
+            model: "openai/gpt-oss-20b",
             messages: [
               {
                 role: "system",
