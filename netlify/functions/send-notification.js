@@ -1,6 +1,6 @@
 // netlify/functions/send-notification.js
 // netlify/functions/send-notification.js
-const fetch = require('node-fetch');
+const fetch = import('node-fetch');
 
 exports.handler = async (event, context) => {
   if (event.httpMethod !== 'POST') {
