@@ -38,6 +38,7 @@ const LeftPanel = ({ prid }) => {
     url,
     selectedElement,
     setDraggingElement,
+    rightPanelMode,
   } = useStore();
 
   const elements = [
@@ -194,8 +195,8 @@ const LeftPanel = ({ prid }) => {
   };
 
   return (
-    <div className="sidebar-left w-full h-full min-h-screen overflow-y-auto no-scroll col-span-1 bg-[#2B2B44] flex flex-col p-1.5 lg:p-4">
-      {mode === "elements" && (
+    <div className="sidebar-left w-full h-full overflow-y-auto no-scroll col-span-1 bg-[#2B2B44] flex flex-col p-1.5 lg:p-4">
+      {rightPanelMode === "elements" && (
         <>
           <h2 className="text-[#FFC700] text-base lg:text-xl font-medium">
             Añadir Elementos
@@ -236,7 +237,7 @@ const LeftPanel = ({ prid }) => {
           </div>
         </>
       )}
-      {mode === "capas" && (
+      {rightPanelMode === "capas" && (
         <ElementList
           elements={droppedElements}
           selectedElement={selectedElement}
@@ -245,8 +246,8 @@ const LeftPanel = ({ prid }) => {
           setDroppedElements={setDroppedElements}
         />
       )}
-      {mode === "ia" && <ChatUI />}
-      {mode === "files" && (
+      {rightPanelMode === "ia" && <ChatUI />}
+      {rightPanelMode === "files" && (
         <ImageUploader
           userId={userId}
           projectId={prid}

@@ -1,14 +1,12 @@
-import {
-  RxText,
-  RxSpaceEvenlyHorizontally,
-  RxBorderWidth,
-  RxBoxModel,
-} from "react-icons/rx";
+import { useCallback, useEffect, useState } from "react";
+import axios from "axios";
+import { RxSpaceEvenlyHorizontally, RxBorderWidth, RxBoxModel } from "react-icons/rx";
 import { CgDropOpacity } from "react-icons/cg";
 import {
   LuAlignLeft,
-  LuAlignJustify,
+  LuAlignCenter,
   LuAlignRight,
+  LuAlignJustify,
   LuAlignStartHorizontal,
   LuAlignCenterHorizontal,
   LuAlignEndHorizontal,
@@ -17,6 +15,13 @@ import {
   LuAlignEndVertical,
   LuAlignHorizontalSpaceAround,
   LuAlignHorizontalSpaceBetween,
+  LuChevronDown,
+  LuPlus,
+  LuMinus,
+  LuPalette,
+  LuSparkles,
+  LuLayoutGrid,
+  LuPencil,
 } from "react-icons/lu";
 import {
   TbBoxAlignTopFilled,
@@ -28,27 +33,347 @@ import {
   TbBoxAlignBottomLeftFilled,
   TbBoxAlignBottomRightFilled,
 } from "react-icons/tb";
-import {
-  MdBorderTop,
-  MdOutlineBorderBottom,
-  MdBorderLeft,
-  MdBorderRight,
-  MdOutlineStyle,
-} from "react-icons/md";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "./ui/accordion";
+import { MdBorderTop, MdOutlineBorderBottom, MdBorderLeft, MdBorderRight, MdOutlineStyle } from "react-icons/md";
 import { BiSolidHide, BiLayer } from "react-icons/bi";
 import useStore from "../store/store";
-import { useCallback, useEffect, useRef, useState } from "react";
-import axios from "axios";
 import useElement from "../store/useElement";
-import GradientEditor from "./GradientEditor";
 import FullColorPicker from "./FullColorPicker";
 
+/* ───────────────────────── Configuración ─────────────────────────
+   Escala de la opacidad de fondo: 1 => 0–1 | 100 => 0–100.
+   Ajusta este valor según lo que espere tu handleStyleChange. */
+const OPACITY_SCALE = 1;
+
+/* ───────────────────────── Datos ───────────────────────── */
+const FONTS = ["Oswald", "Space Mono", "Poppins", "Roboto", "Inter", "Open Sans"].map((f) => ({
+  value: `${f}, serif`,
+  label: f,
+  style: { fontFamily: `${f}, serif` },
+}));
+const WEIGHTS = [
+  { value: "300", label: "Light" },
+  { value: "400", label: "Regular" },
+  { value: "500", label: "Medium" },
+  { value: "600", label: "Semibold" },
+  { value: "700", label: "Bold" },
+];
+const FONT_SIZES = ["12px", "14px", "16px", "20px", "24px", "32px", "48px"];
+const SWATCHES = ["#FFFFFF", "#000000", "#7C6CFF", "#FF6B6B", "#FFC857", "#2EC4B6", "#4D96FF", "#9A9AB8"];
+const DISPLAYS = [
+  { value: "block", label: "Bloque" },
+  { value: "inline-block", label: "En línea" },
+  { value: "flex", label: "Flexible" },
+  { value: "grid", label: "Grilla" },
+  { value: "list-item", label: "Lista" },
+  { value: "none", label: "Esconder" },
+];
+const DIRECTIONS = [
+  { value: "row", label: "Fila" },
+  { value: "column", label: "Columna" },
+  { value: "row-reverse", label: "Fila invertida" },
+  { value: "column-reverse", label: "Columna invertida" },
+];
+const POSITIONS = [
+  { value: "", label: "Ninguna" },
+  { value: "static", label: "Estática" },
+  { value: "relative", label: "Relativa" },
+  { value: "absolute", label: "Absoluta" },
+  { value: "fixed", label: "Fija" },
+];
+const BORDER_STYLES = [
+  { value: "solid", label: "Sólida" },
+  { value: "dashed", label: "Rayas" },
+  { value: "dotted", label: "Puntos" },
+  { value: "none", label: "Ninguno" },
+];
+const SHADOWS = [
+  { value: "", label: "Sin definir" },
+  { value: "none", label: "Ninguna" },
+  { value: "0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24)", label: "Pequeña" },
+  { value: "0 3px 6px rgba(0, 0, 0, 0.16), 0 3px 6px rgba(0, 0, 0, 0.23)", label: "Mediana" },
+  { value: "0 10px 20px rgba(0, 0, 0, 0.19), 0 6px 6px rgba(0, 0, 0, 0.23)", label: "Grande" },
+  { value: "0 15px 25px rgba(0, 0, 0, 0.22), 0 10px 10px rgba(0, 0, 0, 0.2)", label: "Extra grande" },
+];
+const BLURS = [
+  { value: "", label: "Ninguno" },
+  { value: "blur(4px)", label: "Pequeño" },
+  { value: "blur(8px)", label: "Poco" },
+  { value: "blur(12px)", label: "Mediano" },
+  { value: "blur(24px)", label: "Grande" },
+];
+const INPUT_TYPES = [
+  { value: "text", label: "Texto" },
+  { value: "number", label: "Número" },
+  { value: "password", label: "Contraseña" },
+  { value: "email", label: "Correo" },
+  { value: "date", label: "Fecha" },
+  { value: "time", label: "Hora" },
+  { value: "checkbox", label: "Casilla" },
+  { value: "radio", label: "Opción" },
+  { value: "range", label: "Rango" },
+  { value: "file", label: "Archivo" },
+  { value: "color", label: "Color" },
+  { value: "submit", label: "Enviar" },
+];
+const ANIMATIONS = [
+  { group: "Aparecer", items: [["fade", "Desvanecer"], ["fade-up", "Desde abajo"], ["fade-down", "Desde arriba"], ["fade-left", "Desde la izquierda"], ["fade-right", "Desde la derecha"], ["fade-up-right", "Abajo-derecha"], ["fade-up-left", "Abajo-izquierda"], ["fade-down-right", "Arriba-derecha"], ["fade-down-left", "Arriba-izquierda"]] },
+  { group: "Girar", items: [["flip-up", "Arriba"], ["flip-down", "Abajo"], ["flip-left", "Izquierda"], ["flip-right", "Derecha"]] },
+  { group: "Deslizar", items: [["slide-up", "Desde abajo"], ["slide-down", "Desde arriba"], ["slide-left", "Desde la izquierda"], ["slide-right", "Desde la derecha"]] },
+  { group: "Zoom", items: [["zoom-in", "Acercar"], ["zoom-in-up", "Acercar + abajo"], ["zoom-in-down", "Acercar + arriba"], ["zoom-in-left", "Acercar + izquierda"], ["zoom-in-right", "Acercar + derecha"], ["zoom-out", "Alejar"], ["zoom-out-up", "Alejar + arriba"], ["zoom-out-down", "Alejar + abajo"], ["zoom-out-left", "Alejar + izquierda"], ["zoom-out-right", "Alejar + derecha"]] },
+];
+const TABS = [
+  { id: "contenido", label: "Contenido", icon: LuPencil },
+  { id: "estilo", label: "Estilo", icon: LuPalette },
+  { id: "layout", label: "Layout", icon: LuLayoutGrid },
+  { id: "extras", label: "Extras", icon: LuSparkles },
+];
+const SIDES = [
+  ["Top", "Arriba", TbBoxAlignTopFilled],
+  ["Bottom", "Abajo", TbBoxAlignBottomFilled],
+  ["Left", "Izquierda", TbBoxAlignLeftFilled],
+  ["Right", "Derecha", TbBoxAlignRightFilled],
+];
+const CORNERS = [
+  ["borderTopLeftRadius", "Sup. izq.", TbBoxAlignTopLeftFilled],
+  ["borderTopRightRadius", "Sup. der.", TbBoxAlignTopRightFilled],
+  ["borderBottomLeftRadius", "Inf. izq.", TbBoxAlignBottomLeftFilled],
+  ["borderBottomRightRadius", "Inf. der.", TbBoxAlignBottomRightFilled],
+];
+
+/* ───────────────────────── Estilos base ───────────────────────── */
+const boxCls =
+  "w-full min-h-11 rounded-xl bg-[#25253B] border border-[#3A3A58] text-[#F2F2F7] text-base px-3 outline-none focus:border-[#7C6CFF] focus:ring-2 focus:ring-[#7C6CFF]/30 transition";
+
+/* ───────────────────────── Componentes reutilizables ─────────────────────────
+   Están fuera de RightPanel para que no se vuelvan a montar en cada render
+   (así el teclado no se cierra mientras se escribe). */
+
+const Field = ({ label, icon: Icon, children, className = "" }) => (
+  <div className={`flex flex-col gap-1.5 min-w-0 ${className}`}>
+    {label && (
+      <span className="flex items-center gap-1.5 text-[12px] font-medium text-[#9A9AB8]">
+        {Icon && <Icon className="text-sm" />}
+        {label}
+      </span>
+    )}
+    {children}
+  </div>
+);
+
+const Section = ({ title, icon: Icon, defaultOpen = false, children }) => {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className="rounded-2xl bg-[#2A2A43] border border-[#38385A] overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="w-full h-12 px-4 flex items-center gap-2.5 text-left text-[15px] font-semibold text-[#F2F2F7] active:bg-[#30304D]"
+      >
+        {Icon && <Icon className="text-lg text-[#A89CFF]" />}
+        <span className="flex-1">{title}</span>
+        <LuChevronDown className={`text-lg text-[#9A9AB8] transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && <div className="px-4 pb-4 pt-1 flex flex-col gap-4">{children}</div>}
+    </section>
+  );
+};
+
+const Seg = ({ value, onChange, options }) => (
+  <div
+    role="group"
+    className="grid gap-1 p-1 rounded-xl bg-[#25253B]"
+    style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+  >
+    {options.map((o) => {
+      const on = value === o.value;
+      const Icon = o.icon;
+      return (
+        <button
+          key={o.value}
+          type="button"
+          title={o.label}
+          aria-label={o.label}
+          aria-pressed={on}
+          onClick={() => onChange(o.value)}
+          className={`h-10 rounded-lg flex items-center justify-center text-sm transition ${
+            on ? "bg-[#7C6CFF] text-white shadow-md" : "text-[#B4B4CE] active:bg-[#33334F]"
+          }`}
+        >
+          <Icon className="text-xl" />
+        </button>
+      );
+    })}
+  </div>
+);
+
+const Chips = ({ value, onChange, options }) => (
+  <div className="flex flex-wrap gap-2">
+    {options.map((o) => {
+      const v = typeof o === "string" ? o : o.value;
+      const label = typeof o === "string" ? o : o.label;
+      const on = String(value ?? "") === String(v);
+      return (
+        <button
+          key={String(v)}
+          type="button"
+          aria-pressed={on}
+          onClick={() => onChange(v)}
+          style={typeof o === "string" ? undefined : o.style}
+          className={`h-9 px-3.5 rounded-full text-sm border transition ${
+            on
+              ? "bg-[#7C6CFF] border-[#7C6CFF] text-white"
+              : "bg-[#25253B] border-[#3A3A58] text-[#D0D0E4] active:bg-[#33334F]"
+          }`}
+        >
+          {label}
+        </button>
+      );
+    })}
+  </div>
+);
+
+const parseVal = (v) => {
+  const s = String(v ?? "").trim();
+  const m = s.match(/^(-?\d*\.?\d+)([a-z%]*)$/i);
+  return m ? { n: parseFloat(m[1]), u: m[2], raw: s } : { n: null, u: "", raw: s };
+};
+
+/* Campo numérico con botones − / +. Tocar la unidad la cambia (px → % → rem). */
+const Stepper = ({ value, onChange, step = 1, min, max, unitless = false, units = ["px", "%", "rem"], icon, label, placeholder }) => {
+  const p = parseVal(value);
+  const unit = unitless ? "" : p.u || units[0];
+  const clamp = (n) => {
+    let x = n;
+    if (min !== undefined) x = Math.max(min, x);
+    if (max !== undefined) x = Math.min(max, x);
+    return Math.round(x * 100) / 100;
+  };
+  const bump = (dir) => onChange(`${clamp((p.n ?? 0) + dir * step)}${unit}`);
+  const cycleUnit = () => {
+    const i = units.indexOf(unit);
+    onChange(`${p.n}${units[(i + 1) % units.length]}`);
+  };
+  const handleType = (e) => {
+    const t = e.target.value;
+    if (t === "") return onChange("");
+    if (/^-?\d+(\.\d+)?$/.test(t)) onChange(`${t}${unit}`);
+    else onChange(t);
+  };
+  const btn = "w-10 shrink-0 h-full flex items-center justify-center text-[#C9C9E0] active:bg-[#33334F] transition";
+  return (
+    <Field label={label} icon={icon}>
+      <div className="flex items-center h-11 rounded-xl bg-[#25253B] border border-[#3A3A58] focus-within:border-[#7C6CFF] overflow-hidden">
+        <button type="button" aria-label="Restar" onClick={() => bump(-1)} className={btn}>
+          <LuMinus />
+        </button>
+        <input
+          inputMode="decimal"
+          placeholder={placeholder}
+          value={p.n !== null ? String(p.n) : p.raw}
+          onChange={handleType}
+          className="min-w-0 flex-1 h-full bg-transparent text-center text-base text-[#F2F2F7] outline-none"
+        />
+        {!unitless && p.n !== null && (
+          <button type="button" onClick={cycleUnit} aria-label="Cambiar unidad" className="px-1.5 h-full text-xs font-semibold text-[#A89CFF] active:bg-[#33334F]">
+            {unit}
+          </button>
+        )}
+        <button type="button" aria-label="Sumar" onClick={() => bump(1)} className={btn}>
+          <LuPlus />
+        </button>
+      </div>
+    </Field>
+  );
+};
+
+const Slider = ({ label, value, onChange, min = 0, max = 100, step = 1, suffix = "" }) => (
+  <Field label={label}>
+    <div className="flex items-center gap-3 h-11 px-3 rounded-xl bg-[#25253B] border border-[#3A3A58]">
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={Number(value) || 0}
+        onChange={(e) => onChange(e.target.value)}
+        className="flex-1 h-6 accent-[#7C6CFF]"
+      />
+      <span className="w-16 text-right text-sm tabular-nums text-[#F2F2F7]">
+        {Number(value) || 0}
+        {suffix}
+      </span>
+    </div>
+  </Field>
+);
+
+const Toggle = ({ label, icon: Icon, checked, onChange }) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    onClick={() => onChange(!checked)}
+    className="flex items-center gap-3 h-11 px-3 rounded-xl bg-[#25253B] border border-[#3A3A58] text-left active:bg-[#2D2D47]"
+  >
+    {Icon && <Icon className="text-xl text-[#9A9AB8]" />}
+    <span className="flex-1 text-sm text-[#E4E4F0]">{label}</span>
+    <span className={`w-10 h-6 rounded-full p-0.5 transition ${checked ? "bg-[#7C6CFF]" : "bg-[#4A4A6A]"}`}>
+      <span className={`block w-5 h-5 rounded-full bg-white transition-transform ${checked ? "translate-x-4" : ""}`} />
+    </span>
+  </button>
+);
+
+const ColorField = ({ value, onChange }) => {
+  const hex = /^#[0-9a-f]{6}$/i.test(value || "") ? value : "#000000";
+  return (
+    <div className="flex items-center gap-2 overflow-x-auto no-scroll scrollbar-hide py-1 -mx-1 px-1">
+      <label
+        className="relative shrink-0 w-10 h-10 rounded-full border-2 border-dashed border-[#7C6CFF] flex items-center justify-center overflow-hidden cursor-pointer"
+        style={{ background: value || "transparent" }}
+        title="Elegir otro color"
+      >
+        <LuPalette className="text-lg text-white mix-blend-difference" />
+        <input
+          type="color"
+          value={hex}
+          onChange={(e) => onChange(e.target.value)}
+          className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+          aria-label="Elegir color personalizado"
+        />
+      </label>
+      {SWATCHES.map((c) => {
+        const on = (value || "").toLowerCase() === c.toLowerCase();
+        return (
+          <button
+            key={c}
+            type="button"
+            aria-label={`Color ${c}`}
+            onClick={() => onChange(c)}
+            style={{ background: c }}
+            className={`shrink-0 w-9 h-9 rounded-full border border-white/20 transition ${
+              on ? "ring-2 ring-offset-2 ring-offset-[#2A2A43] ring-[#7C6CFF]" : ""
+            }`}
+          />
+        );
+      })}
+    </div>
+  );
+};
+
+/* Cuatro lados + valor global, con atajos rápidos */
+const SpacingBox = ({ prop, st, onChange, globalLabel, min }) => (
+  <>
+    <Stepper icon={RxBoxModel} label={globalLabel} value={st[prop]} step={4} min={min} placeholder="0" onChange={(v) => onChange(prop, v)} />
+    <Chips value={st[prop]} onChange={(v) => onChange(prop, v)} options={["0", "8px", "16px", "24px", "32px"]} />
+    <div className="grid grid-cols-2 gap-3">
+      {SIDES.map(([s, l, I]) => (
+        <Stepper key={s} icon={I} label={l} value={st[prop + s]} step={4} min={min} onChange={(v) => onChange(prop + s, v)} />
+      ))}
+    </div>
+  </>
+);
+
+/* ───────────────────────── Panel ───────────────────────── */
 const RightPanel = ({
   handleStyleChange,
   handleTextChange,
@@ -74,126 +399,72 @@ const RightPanel = ({
     setSelectedPage,
     selectedElement,
     setSelectedElement,
-  } = useStore(); // Usamos los métodos del store para actualizar el estado
+  } = useStore();
   const { selectedId, targetId, setSelectedId, setTargetId } = useElement();
   const [uploadedImages, setUploadedImages] = useState([]);
+  const [tab, setTab] = useState("contenido");
 
   const findElementById = (elements, id) => {
     for (const el of elements) {
-      if (String(el.id) === String(id)) {
-        return el;
-      }
+      if (String(el.id) === String(id)) return el;
       if (el.children) {
         const found = findElementById(el.children, id);
-        if (found) {
-          return found;
-        }
+        if (found) return found;
       }
     }
-    return null; // Si no se encuentra el elemento
+    return null;
   };
 
   const handleGradientChange = useCallback(
-    (gradient) => {
-      handleStyleChange("background", gradient);
-    },
+    (gradient) => handleStyleChange("background", gradient),
     [handleStyleChange]
   );
 
+  /* Copiar estilos de un elemento a otro */
   const applyStyles = () => {
-    console.log("selectedId:", selectedId);
-    console.log("droppedElements:", droppedElements);
-
     if (!selectedId || !targetId) {
       console.error("Selecciona ambos elementos antes de aplicar los estilos.");
       return;
     }
-
-    // Verificar si droppedElements está vacío
     if (!Array.isArray(droppedElements) || droppedElements.length === 0) {
       console.error("droppedElements no es un array válido o está vacío.");
       return;
     }
-
-    // Busca el elemento seleccionado recursivamente
-    const selectedElement = findElementById(droppedElements, selectedId);
-
-    if (!selectedElement) {
-      console.error(
-        `El elemento con ID ${selectedId} no existe en droppedElements.`
-      );
+    const source = findElementById(droppedElements, selectedId);
+    if (!source) {
+      console.error(`El elemento con ID ${selectedId} no existe en droppedElements.`);
       return;
     }
-
-    // Actualizar estilos
     const updateStylesRecursively = (elements) =>
       elements.map((el) => {
-        if (el.id === Number(targetId)) {
-          return {
-            ...el,
-            styles: { ...selectedElement.styles },
-          };
-        }
-        if (el.children) {
-          return {
-            ...el,
-            children: updateStylesRecursively(el.children),
-          };
-        }
+        if (el.id === Number(targetId)) return { ...el, styles: { ...source.styles } };
+        if (el.children) return { ...el, children: updateStylesRecursively(el.children) };
         return el;
       });
-
-    const updatedElements = updateStylesRecursively(droppedElements);
-    setDroppedElements(updatedElements);
+    setDroppedElements(updateStylesRecursively(droppedElements));
   };
 
+  /* Aplicar un estilo global al elemento seleccionado */
   const applyGlobalStyles = (selectedStyleName) => {
-    console.log("selectedStyleName:", selectedStyleName);
-    console.log("droppedElements:", droppedElements);
-
-    if (!selectedStyleName) {
-      console.error("Selecciona un estilo global antes de aplicarlo.");
-      return;
-    }
-
-    // Verificar si droppedElements está vacío
+    if (!selectedStyleName) return;
     if (!Array.isArray(droppedElements) || droppedElements.length === 0) {
       console.error("droppedElements no es un array válido o está vacío.");
       return;
     }
-
-    // Busca el estilo global seleccionado
     const selectedStyle = gs.find((style) => style.name === selectedStyleName);
-
     if (!selectedStyle) {
-      console.error(
-        `El estilo global con nombre ${selectedStyleName} no existe.`
-      );
+      console.error(`El estilo global con nombre ${selectedStyleName} no existe.`);
       return;
     }
-
-    // Filtramos los estilos vacíos del estilo global
-    const cleanStyles = (styles) => {
-      return Object.fromEntries(
-        Object.entries(styles || {}).filter(
-          ([key, val]) => val !== "" && val !== null && val !== undefined
-        )
-      );
-    };
-
-    const cleanedGlobalStyles = cleanStyles(selectedStyle.styles);
-    console.log("Estilos Globales Limpiados:", cleanedGlobalStyles);
+    const cleanedGlobalStyles = Object.fromEntries(
+      Object.entries(selectedStyle.styles || {}).filter(([, val]) => val !== "" && val !== null && val !== undefined)
+    );
 
     const updateStylesRecursively = (elements) =>
       elements.map((el) => {
         if (el.id === selectedElement.id) {
-          let newStyles = { ...el.styles };
-
-          for (const [styleName, value] of Object.entries(
-            cleanedGlobalStyles
-          )) {
-            if (value === "" || value === null || value === undefined) continue;
-
+          const newStyles = { ...el.styles };
+          for (const [styleName, value] of Object.entries(cleanedGlobalStyles)) {
             if (styleName === "margin") {
               newStyles.margin = value;
               delete newStyles.marginTop;
@@ -219,1253 +490,467 @@ const RightPanel = ({
               newStyles[styleName] = value;
             }
           }
-
-          return {
-            ...el,
-            styles: newStyles,
-          };
+          return { ...el, styles: newStyles };
         }
-
-        // Aplicar recursivamente si tiene hijos
-        if (el.children) {
-          return {
-            ...el,
-            children: updateStylesRecursively(el.children),
-          };
-        }
-
+        if (el.children) return { ...el, children: updateStylesRecursively(el.children) };
         return el;
       });
 
-    const updatedElements = updateStylesRecursively(droppedElements);
-
-    // Actualizamos el estado con los nuevos elementos
-    setDroppedElements(updatedElements);
-
-    // También actualizamos el estado del elemento seleccionado
+    setDroppedElements(updateStylesRecursively(droppedElements));
     setSelectedElement({
       ...selectedElement,
-      styles: {
-        ...selectedElement.styles, // Mantenemos los estilos actuales del elemento
-        ...cleanedGlobalStyles, // Aplicamos solo los estilos válidos
-      },
+      styles: { ...selectedElement.styles, ...cleanedGlobalStyles },
     });
   };
 
+  /* Reaplicar el estilo global cuando cambia la clase seleccionada */
   useEffect(() => {
     if (!selectedElement || !selectedElement.iconClass) return;
-
-    // Verificamos si el estilo existe en gs
-    const styleExists = gs.some(
-      (style) => style.name === selectedElement.iconClass
-    );
-
-    console.log(
-      "🟠 ¿El estilo existe después de handleClassChange?",
-      styleExists
-    );
-
+    const styleExists = gs.some((style) => style.name === selectedElement.iconClass);
     if (!styleExists) {
-      console.warn(
-        `⚠️ El estilo global con nombre "${selectedElement.iconClass}" no existe después de la actualización.`
-      );
+      console.warn(`⚠️ El estilo global "${selectedElement.iconClass}" no existe.`);
       return;
     }
-
-    // Aplicamos los estilos globales (reemplaza applyGlobalStyles con la lógica que necesites)
     applyGlobalStyles(selectedElement.iconClass);
-  }, [selectedElement?.iconClass, gs]); // Dependemos de selectedElement.iconClass y gs
+  }, [selectedElement?.iconClass, gs]);
 
-  // Sincronizar `selectedElement` si su ID cambia
+  /* Sincronizar selectedElement si cambia el targetId */
   useEffect(() => {
     if (!selectedElement || String(selectedElement.id) !== String(targetId)) {
-      const newSelectedElement = droppedElements.find(
-        (e) => String(e.id) === String(targetId)
-      );
-      if (newSelectedElement) {
-        setSelectedElement({ ...newSelectedElement });
-      }
+      const next = droppedElements.find((e) => String(e.id) === String(targetId));
+      if (next) setSelectedElement({ ...next });
     }
-  }, [droppedElements, targetId]); // Se ejecuta cuando `droppedElements` o `targetId` cambian
+  }, [droppedElements, targetId]);
 
-  const handlePageSelect = (event) => {
-    setSelectedPage(event.target.value);
-  };
-
-  // Cargar imágenes existentes desde el backend
-  const fetchImages = async () => {
-    try {
-      const response = await axios.get(`${url}/imagesuploaded/${prid}`);
-      setUploadedImages(response.data.images); // Suponiendo que devuelve un array de rutas
-    } catch (error) {
-      console.error("Error al cargar imágenes:", error);
-    }
-  };
-
+  /* Evita navegar al tocar un enlace que se está editando
+     (antes se registraba en cada render; ahora una sola vez y con limpieza) */
   useEffect(() => {
-    fetchImages(); // Llamar cuando el componente se monte
+    const handler = (event) => {
+      const target = event.target;
+      if (target.tagName === "A" && selectedElement?.id !== undefined && String(selectedElement.id) === String(target.getAttribute("id"))) {
+        event.preventDefault();
+      }
+    };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [selectedElement?.id]);
+
+  /* Imágenes subidas */
+  useEffect(() => {
+    (async () => {
+      try {
+        const response = await axios.get(`${url}/imagesuploaded/${prid}`);
+        setUploadedImages(response.data.images || []);
+      } catch (error) {
+        console.error("Error al cargar imágenes:", error);
+      }
+    })();
   }, []);
 
   const getRowCount = (value) => {
-    if (!value) return ""; // si es undefined, null o vacío
+    if (!value) return "";
     const match = value.match(/repeat\((\d+),\s*1fr\)/);
     return match ? match[1] : "";
   };
 
   if (!project || !project.pages) {
-    return <p>Loading...</p>; // Mostrar mensaje de carga mientras se obtienen los datos
+    return <p className="p-4 text-[#9A9AB8]">Cargando…</p>;
   }
 
+  const pageSelect = (cls) => (
+    <select className={`${boxCls} ${cls}`} value={selectedPage} onChange={(e) => setSelectedPage(e.target.value)} aria-label="Página">
+      {project.pages.map((page, i) => (
+        <option key={i} value={page.name}>
+          {page.name}
+        </option>
+      ))}
+    </select>
+  );
+
+  /* Estado vacío */
   if (!selectedElement) {
     return (
-      <div className="right-panel w-full h-full col-span-1 bg-[#2B2B44] p-4">
-        <h2 className="text-[#F5F5F5] text-xl font-medium">Propiedades</h2>
-        {/* Select dropdown for pages */}
-        <h3 className="text-[#F5F5F5] text-base font-medium mt-3">Página</h3>
-        <select
-          className="w-full h-8 rounded border mt-4 border-[#828282] bg-transparent text-[#E0E0E0] pl-2 outline-none"
-          value={selectedPage}
-          onChange={handlePageSelect}
-        >
-          {project.pages.map((page, i) => (
-            <option key={i} value={page.name}>
-              {page.name}
-            </option>
-          ))}
-        </select>
-        <p className="text-white mt-4">
-          Selecciona un elemento para editar sus propiedades.
-        </p>
+      <div className="right-panel w-full h-full col-span-1 bg-[#1F1F33] p-4 flex flex-col gap-4">
+        <h2 className="text-[#F2F2F7] text-lg font-semibold">Propiedades</h2>
+        <Field label="Página">{pageSelect("")}</Field>
+        <div className="rounded-2xl border border-dashed border-[#46466A] p-8 flex flex-col items-center gap-3 text-center">
+          <LuPencil className="text-3xl text-[#A89CFF]" />
+          <p className="text-sm text-[#B4B4CE]">Toca un elemento del lienzo para editar sus propiedades.</p>
+        </div>
       </div>
     );
   }
 
-  const renderOptions = (elements) => {
-    return elements.flatMap((el) => [
+  const st = selectedElement.styles || {};
+  const set = handleStyleChange;
+  const isFlexOrGrid = st.display === "flex" || st.display === "grid";
+  const isOffset = st.position === "absolute" || st.position === "fixed";
+
+  const renderOptions = (elements) =>
+    elements.flatMap((el) => [
       <option key={el.id} value={String(el.id)}>
         {el.name} - {el.text}
       </option>,
       ...(el.children ? renderOptions(el.children) : []),
     ]);
-  };
 
-  document.addEventListener("click", (event) => {
-    const target = event.target;
+  /* ───────── Pestañas ───────── */
+  const tabContenido = (
+    <>
+      <Section title="Contenido" icon={LuPencil} defaultOpen>
+        <Field label="Texto">
+          <textarea
+            rows={2}
+            className={`${boxCls} py-2.5 resize-none`}
+            value={selectedElement.text ?? ""}
+            onChange={(e) => handleTextChange(e.target.value)}
+          />
+        </Field>
+        {selectedElement.placeholder && (
+          <Field label="Texto de ayuda (placeholder)">
+            <input className={boxCls} value={selectedElement.placeholder} onChange={(e) => handlePlaceholderChange(e.target.value)} />
+          </Field>
+        )}
+        {selectedElement.iconClass && selectedElement.name === "Icon" && (
+          <Field label="Icono ID">
+            <input className={boxCls} value={selectedElement.iconClass} onChange={(e) => handleClassChange(e.target.value)} />
+          </Field>
+        )}
+        {selectedElement.value && (
+          <Field label="Valor">
+            <input className={boxCls} value={selectedElement.value} onChange={(e) => handleValOptChange(e.target.value)} />
+          </Field>
+        )}
+        {selectedElement.href && (
+          <Field label="Ir a">
+            <input className={boxCls} inputMode="url" value={selectedElement.href} onChange={(e) => handleHrefChange(e.target.value)} />
+          </Field>
+        )}
+        {selectedElement.type && (
+          <Field label="Tipo de input">
+            <Chips value={selectedElement.type} onChange={handleTypeInputChange} options={INPUT_TYPES} />
+          </Field>
+        )}
+      </Section>
 
-    if (target.tagName === "A" && isEditing(target)) {
-      event.preventDefault();
-    }
-  });
-
-  const isEditing = (element) => {
-    // Verifica si el elemento está seleccionado en tu panel derecho
-    return selectedElement?.id === element.getAttribute("id");
-  };
-
-  return (
-    <div className="right-panel w-full h-full col-span-1 bg-[#2B2B44] p-1.5 lg:p-4 no-scroll overflow-y-auto scrollbar-hide">
-      <h2 className="text-[#F5F5F5] text-xl font-medium">Propiedades</h2>
-      <input className="text-[#BDBDBD] text-lg font-medium mt-4 px-1 w-full" type="text" value={`Id: ${selectedElement.id}`} readOnly />
-      <div className="w-full h-auto flex flex-col gap-3 mt-5">
-        <h3 className="text-[#F5F5F5] text-base font-medium">Página</h3>
-        <select
-          className="w-full h-8 rounded border mt-2 border-[#828282] bg-transparent text-[#E0E0E0] pl-2 outline-none"
-          value={selectedPage}
-          onChange={handlePageSelect}
-        >
-          {project.pages.map((page, i) => (
-            <option key={i} value={page.name}>
-              {page.name}
-            </option>
-          ))}
-        </select>
-
-        {selectedElement && (
-          <>
-            {selectedElement.placeholder && (
-              <div className="mt-3 flex flex-col gap-2">
-                <h3 className="text-sm text-[#BDBDBD] font-semibold">
-                  Placeholder
-                </h3>
-                <input
-                  className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2"
-                  value={selectedElement.placeholder}
-                  onChange={(e) => handlePlaceholderChange(e.target.value)}
-                />
-              </div>
-            )}
-            {selectedElement.iconClass && selectedElement.name === "Icon" && (
-              <div className="mt-3 flex flex-col gap-2">
-                <h3 className="text-sm text-[#BDBDBD] font-semibold">
-                  Icono ID
-                </h3>
-                <input
-                  className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2"
-                  value={selectedElement.iconClass}
-                  onChange={(e) => handleClassChange(e.target.value)}
-                />
-              </div>
-            )}
-            {selectedElement.value && (
-              <div className="mt-3 flex flex-col gap-2">
-                <h3 className="text-sm text-[#BDBDBD] font-semibold">Valor</h3>
-                <input
-                  className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2"
-                  value={selectedElement.value}
-                  onChange={(e) => handleValOptChange(e.target.value)}
-                />
-              </div>
-            )}
-            {selectedElement.href && (
-              <div className="mt-3 flex flex-col gap-2">
-                <h3 className="text-sm text-[#BDBDBD] font-semibold">Ir a</h3>
-                <input
-                  className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2"
-                  value={selectedElement.href}
-                  onChange={(e) => handleHrefChange(e.target.value)}
-                />
-              </div>
-            )}
-            {selectedElement.type && (
-              <div className="w-full">
-                <h3 className="text-sm text-[#BDBDBD] font-semibold">
-                  Tipo de Input
-                </h3>
-                <select
-                  className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2 outline-none mt-2"
-                  value={selectedElement.type}
-                  onChange={(e) => handleTypeInputChange(e.target.value)}
-                >
-                  <option value="text">Texto</option>
-                  <option value="text">Número</option>
-                  <option value="password">Contraseña</option>
-                  <option value="email">Correo</option>
-                  <option value="date">Fecha</option>
-                  <option value="time">Hora</option>
-                  <option value="checkbox">Casilla</option>
-                  <option value="radio">Opcion</option>
-                  <option value="range">Rango</option>
-                  <option value="file">Archivo</option>
-                  <option value="color">Color</option>
-                  <option value="submit">Subir</option>
-                </select>
-              </div>
-            )}
-            {selectedElement && (
-              <div className="w-full">
-                <h3 className="text-sm text-[#BDBDBD] font-semibold">
-                  Tipo de Animación
-                </h3>
-                <select
-                  className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2 outline-none mt-2"
-                  value={selectedElement.animation}
-                  onChange={(e) => handleAnimationChange(e.target.value)}
-                >
-                  <option value="">Ninguna</option>
-                  <option value="fade">Desvanece el elemento</option>
-                  <option value="fade-up">Aparece desde abajo</option>
-                  <option value="fade-down">Aparece desde arriba</option>
-                  <option value="fade-left">Aparece desde la izquierda</option>
-                  <option value="fade-right">Aparece desde la derecha</option>
-                  <option value="fade-up-right">
-                    Aparece desde abajo a la derecha
-                  </option>
-                  <option value="fade-up-left">
-                    Aparece desde abajo a la izquierda
-                  </option>
-                  <option value="fade-down-right">
-                    Aparece desde arriba a la derecha
-                  </option>
-                  <option value="fade-down-left">
-                    Aparece desde arriba a la izquierda
-                  </option>
-                  <option value="flip-up">Gira hacia arriba</option>
-                  <option value="flip-down">Gira hacia abajo</option>
-                  <option value="flip-left">Gira hacia la izquierda</option>
-                  <option value="flip-right">Gira hacia la derecha</option>
-                  <option value="slide-up">Desliza desde abajo</option>
-                  <option value="slide-down">Desliza desde arriba</option>
-                  <option value="slide-left">Desliza desde la izquierda</option>
-                  <option value="slide-right">Desliza desde la derecha</option>
-                  <option value="zoom-in">Zoom hacia adentro</option>
-                  <option value="zoom-in-up">Zoom + aparece desde abajo</option>
-                  <option value="zoom-in-down">
-                    Zoom + aparece desde arriba
-                  </option>
-                  <option value="zoom-in-left">
-                    Zoom + aparece desde la izquierda
-                  </option>
-                  <option value="zoom-in-right">
-                    Zoom + aparece desde la derecha
-                  </option>
-                  <option value="zoom-out">Zoom hacia afuera</option>
-                  <option value="zoom-out-up">
-                    Zoom + se aleja hacia arriba
-                  </option>
-                  <option value="zoom-out-down">
-                    Zoom + se aleja hacia abajo
-                  </option>
-                  <option value="zoom-out-left">
-                    Zoom + se aleja hacia la izquierda
-                  </option>
-                  <option value="zoom-out-right">
-                    Zoom + se aleja hacia la derecha
-                  </option>
-                </select>
-              </div>
-            )}
-            {selectedElement.animation && (
-              <div className="mt-3 flex flex-col gap-2">
-                <h3 className="text-sm text-[#BDBDBD] font-semibold">
-                  Duración de la animación
-                </h3>
-                <input
-                  className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2"
-                  value={selectedElement.duracionanim}
-                  onChange={(e) => handleDurAnimationChange(e.target.value)}
-                />
-              </div>
-            )}
-            {selectedElement.animation && (
-              <div className="mt-3 flex flex-col gap-2">
-                <h3 className="text-sm text-[#BDBDBD] font-semibold">
-                  Retraso de la animación
-                </h3>
-                <input
-                  className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2"
-                  value={selectedElement.retrasoanim}
-                  onChange={(e) => handleRetAnimationChange(e.target.value)}
-                />
-              </div>
-            )}
-            {selectedElement.src && (
-              <div className="w-full">
-                <h3 className="text-sm text-[#BDBDBD] font-semibold">Imagen</h3>
-                <select
-                  className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2 outline-none mt-2"
-                  value={selectedElement.src}
-                  onChange={(e) => handleSrcImgChange(e.target.value)}
-                >
-                  {uploadedImages.map((image, index) => {
-                    if (typeof image !== "string") return null; // Evita errores si no es un string
-                    const imageName = image.split("/").pop(); // Obtiene '1739066926893.png'
-                    return (
-                      <option key={index} value={`${url}${image}`}>
-                        {imageName}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-            )}
-
-            <div className="w-full h-auto gap-3 border border-l-0 border-r-0 border-b-0 pt-3 border-[#4F4F4F]">
-              <h3
-                className="text-[#ffffff] text-sm font-medium mt-1"
-                style={{ fontFamily: "Inter, sans-serif" }}
-              >
-                Tipografía
-              </h3>
-            </div>
-
-            <div className="w-full h-auto grid grid-cols-2 grid-rows-4 gap-2 ">
-              <div className="mt-2 flex flex-col gap-2 col-span-2">
-                <select
-                  className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2 outline-none"
-                  value={selectedElement.styles.fontFamily}
-                  onChange={(e) =>
-                    handleStyleChange("fontFamily", e.target.value)
-                  }
-                >
-                  <option value="Oswald, serif">Oswald</option>
-                  <option value="Space Mono, serif">Space Mono</option>
-                  <option value="Poppins, serif">Poppins</option>
-                  <option value="Roboto, serif">Roboto</option>
-                  <option value="Inter, serif">Inter</option>
-                  <option value="Open Sans, serif">Open Sans</option>
-                </select>
-              </div>
-              <div className="mt-2 flex flex-col gap-2 row-start-2">
-                <select
-                  className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2 outline-none"
-                  value={selectedElement.styles.fontWeight}
-                  onChange={(e) =>
-                    handleStyleChange("fontWeight", e.target.value)
-                  }
-                >
-                  <option value="100">Light</option>
-                  <option value="200">Regular</option>
-                  <option value="400">Retina</option>
-                  <option value="500">Medium</option>
-                  <option value="600">Semibold</option>
-                  <option value="800">Bold</option>
-                </select>
-              </div>
-              <div className="mt-2 flex flex-col gap-2 row-start-2 bg-[#555555]">
-                <input
-                  className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2 outline-none"
-                  value={selectedElement.styles.fontSize}
-                  onChange={(e) =>
-                    handleStyleChange("fontSize", e.target.value)
-                  }
-                />
-              </div>
-              <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] col-span-2 mt-2">
-                <RxText className="text-base text-[#BDBDBD]" />
-                <input
-                  className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                  value={selectedElement.text}
-                  onChange={(e) => handleTextChange(e.target.value)}
-                />
-              </div>
-              <div className="mt-2 grid row-start-4 grid-cols-3 h-8 bg-[#555555] rounded-md">
-                <div
-                  className={`h-8 flex items-center justify-center rounded-md cursor-pointer ${
-                    selectedElement.styles.textAlign === "left"
-                      ? "bg-[#2C2C2C] border-[2px] border-[#444444]"
-                      : ""
-                  }`}
-                  onClick={() => handleStyleChange("textAlign", "left")}
-                >
-                  <LuAlignLeft className="text-xl text-[#C3C3C3]" />
-                </div>
-                <div
-                  className={`h-8 flex items-center justify-center rounded-md cursor-pointer ${
-                    selectedElement.styles.textAlign === "center"
-                      ? "bg-[#2C2C2C] border-[2px] border-[#444444]"
-                      : ""
-                  }`}
-                  onClick={() => handleStyleChange("textAlign", "center")}
-                >
-                  <LuAlignJustify className="text-xl text-[#C3C3C3]" />
-                </div>
-                <div
-                  className={`h-8 flex items-center justify-center rounded-md cursor-pointer ${
-                    selectedElement.styles.textAlign === "right"
-                      ? "bg-[#2C2C2C] border-[2px] border-[#444444]"
-                      : ""
-                  }`}
-                  onClick={() => handleStyleChange("textAlign", "right")}
-                >
-                  <LuAlignRight className="text-xl text-[#C3C3C3]" />
-                </div>
-              </div>
-              <div className="gap-2 col-span-2 row-start-5 h-8">
-                <input
-                  type="color"
-                  className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] outline-none"
-                  value={selectedElement.styles.color}
-                  onChange={(e) => handleStyleChange("color", e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="w-full h-auto gap-3 border border-l-0 border-r-0 border-b-0 pt-3 border-[#4F4F4F]">
-              <h3
-                className="text-[#ffffff] text-sm font-medium mt-1"
-                style={{ fontFamily: "Inter, sans-serif" }}
-              >
-                Disposición
-              </h3>
-            </div>
-
-            <div
-              className={`w-full h-auto grid grid-cols-2 gap-2
-              ${
-                selectedElement.styles.display === "grid"
-                  ? "grid-rows-5"
-                  : "grid-rows-4"
-              }
-            `}
-            >
-              <div className="mt-2 flex flex-col gap-2 col-span-2">
-                <select
-                  className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2 outline-none"
-                  value={selectedElement.styles.display}
-                  onChange={(e) => handleStyleChange("display", e.target.value)}
-                >
-                  <option value="block">Bloque</option>
-                  <option value="inline-block">Enlinea-Bloque</option>
-                  <option value="flex">Flexible</option>
-                  <option value="list-item">Elemento de Lista</option>
-                  <option value="grid">Grilla</option>
-                  <option value="none">Esconder</option>
-                </select>
-              </div>
-              <div className="mt-2 grid row-start-2 grid-cols-3 h-8 bg-[#555555] rounded-md">
-                <div
-                  className={`h-8 flex items-center justify-center rounded-md cursor-pointer ${
-                    selectedElement.styles.alignItems === "start"
-                      ? "bg-[#2C2C2C] border-[2px] border-[#444444]"
-                      : ""
-                  }`}
-                  onClick={() => handleStyleChange("alignItems", "start")}
-                >
-                  <LuAlignStartHorizontal className="text-xl text-[#C3C3C3]" />
-                </div>
-                <div
-                  className={`h-8 flex items-center justify-center rounded-md cursor-pointer ${
-                    selectedElement.styles.alignItems === "center"
-                      ? "bg-[#2C2C2C] border-[2px] border-[#444444]"
-                      : ""
-                  }`}
-                  onClick={() => handleStyleChange("alignItems", "center")}
-                >
-                  <LuAlignCenterHorizontal className="text-xl text-[#C3C3C3]" />
-                </div>
-                <div
-                  className={`h-8 flex items-center justify-center rounded-md cursor-pointer ${
-                    selectedElement.styles.alignItems === "end"
-                      ? "bg-[#2C2C2C] border-[2px] border-[#444444]"
-                      : ""
-                  }`}
-                  onClick={() => handleStyleChange("alignItems", "end")}
-                >
-                  <LuAlignEndHorizontal className="text-xl text-[#C3C3C3]" />
-                </div>
-              </div>
-              <div className="mt-2 grid row-start-2 grid-cols-3 h-8 bg-[#555555] rounded-md">
-                <div
-                  className={`h-8 flex items-center justify-center rounded-md cursor-pointer ${
-                    selectedElement.styles.justifyContent === "start"
-                      ? "bg-[#2C2C2C] border-[2px] border-[#444444]"
-                      : ""
-                  }`}
-                  onClick={() => handleStyleChange("justifyContent", "start")}
-                >
-                  <LuAlignStartVertical className="text-xl text-[#C3C3C3]" />
-                </div>
-                <div
-                  className={`h-8 flex items-center justify-center rounded-md cursor-pointer ${
-                    selectedElement.styles.justifyContent === "center"
-                      ? "bg-[#2C2C2C] border-[2px] border-[#444444]"
-                      : ""
-                  }`}
-                  onClick={() => handleStyleChange("justifyContent", "center")}
-                >
-                  <LuAlignCenterVertical className="text-xl text-[#C3C3C3]" />
-                </div>
-                <div
-                  className={`h-8 flex items-center justify-center rounded-md cursor-pointer ${
-                    selectedElement.styles.justifyContent === "end"
-                      ? "bg-[#2C2C2C] border-[2px] border-[#444444]"
-                      : ""
-                  }`}
-                  onClick={() => handleStyleChange("justifyContent", "end")}
-                >
-                  <LuAlignEndVertical className="text-xl text-[#C3C3C3]" />
-                </div>
-              </div>
-              <div className="mt-2 grid row-start-3 grid-cols-3 h-8 bg-[#555555] rounded-md">
-                <div
-                  className={`h-8 flex items-center justify-center rounded-md cursor-pointer ${
-                    selectedElement.styles.justifyContent === "space-around"
-                      ? "bg-[#2C2C2C] border-[2px] border-[#444444]"
-                      : ""
-                  }`}
-                  onClick={() =>
-                    handleStyleChange("justifyContent", "space-around")
-                  }
-                >
-                  <LuAlignHorizontalSpaceAround className="text-xl text-[#C3C3C3]" />
-                </div>
-                <div className="h-8 flex items-center justify-center rounded-md cursor-pointer">
-                  <RxSpaceEvenlyHorizontally className="text-xl text-[#C3C3C3]" />
-                </div>
-                <div
-                  className={`h-8 flex items-center justify-center rounded-md cursor-pointer ${
-                    selectedElement.styles.justifyContent === "space-between"
-                      ? "bg-[#2C2C2C] border-[2px] border-[#444444]"
-                      : ""
-                  }`}
-                  onClick={() =>
-                    handleStyleChange("justifyContent", "space-between")
-                  }
-                >
-                  <LuAlignHorizontalSpaceBetween className="text-xl text-[#C3C3C3]" />
-                </div>
-              </div>
-              <div className="mt-2 row-start-3">
-                {selectedElement.styles.display === "flex" && (
-                  <select
-                    className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] text-base pl-2 outline-none"
-                    value={selectedElement.styles.flexDirection}
-                    onChange={(e) =>
-                      handleStyleChange("flexDirection", e.target.value)
-                    }
-                  >
-                    <option value="">Dirección</option>
-                    <option value="row">Fila</option>
-                    <option value="column">Columna</option>
-                    <option value="column-reverse">Columna invertida</option>
-                    <option value="row-reverse">Fila invertida</option>
-                  </select>
-                )}
-              </div>
-              <div
-                className={`mt-2 row-start-4 text-sm gap-2 text-[#C3C3C3] h-8 flex items-center justify-center rounded-md col-span-2 cursor-pointer bg-[#555555] ${
-                  selectedElement.styles.overflow === "hidden"
-                    ? "bg-[#2C2C2C] border-[2px] border-[#444444]"
-                    : ""
-                }`}
-                onClick={() => handleStyleChange("overflow", "hidden")}
-              >
-                <BiSolidHide className="text-xl text-[#C3C3C3]" />
-                Ocultar elementos si se salen
-              </div>
-              {selectedElement.styles.display === "grid" && (
-                <>
-                  <div className="mt-2 flex flex-col gap-2 row-start-5 bg-[#555555]">
-                    <input
-                      className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2 outline-none"
-                      value={getRowCount(
-                        selectedElement.styles.gridTemplateColumns
-                      )}
-                      placeholder="Columnas"
-                      onChange={(e) =>
-                        handleStyleChange(
-                          "gridTemplateColumns",
-                          `repeat(${e.target.value}, 1fr)`
-                        )
-                      }
-                    />
-                  </div>
-                  <div className="mt-2 flex flex-col gap-2 row-start-5 bg-[#555555]">
-                    <input
-                      className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2 outline-none"
-                      value={getRowCount(
-                        selectedElement.styles.gridTemplateRows
-                      )}
-                      placeholder="Filas"
-                      onChange={(e) =>
-                        handleStyleChange(
-                          "gridTemplateRows",
-                          `repeat(${e.target.value}, 1fr)`
-                        )
-                      }
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="w-full h-auto gap-3 border border-l-0 border-r-0 border-b-0 pt-3 border-[#4F4F4F]">
-              <h3
-                className="text-[#ffffff] text-sm font-medium mt-1"
-                style={{ fontFamily: "Inter, sans-serif" }}
-              >
-                Relleno
-              </h3>
-            </div>
-            {/*
-            <div className="w-full h-8">
-              <input
-                type="color"
-                className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] outline-none"
-                value={selectedElement.styles.background}
-                onChange={(e) =>
-                  handleStyleChange("background", e.target.value)
-                }
-              />
-            </div>
-            <div className="w-full h-auto">
-              <GradientEditor onChange={handleGradientChange} />
-            </div>
-            */}
-            <div className="w-full h-auto">
-              <FullColorPicker
-                onChange={handleGradientChange}
-                value={selectedElement.styles.background}
-              />
-            </div>
-            <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] col-span-2 mt-2">
-              <CgDropOpacity className="text-base text-[#BDBDBD]" />
-              <input
-                className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                value={selectedElement.backgroundOpacity}
-                onChange={(e) =>
-                  handleStyleChange("backgroundOpacity", e.target.value)
-                }
-              />
-            </div>
-            <div className="mt-2 flex flex-col gap-2 col-span-2">
-              <select
-                className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2 outline-none"
-                value={selectedElement?.styles?.backdropFilter || ""}
-                onChange={(e) =>
-                  handleStyleChange("backdropFilter", e.target.value)
-                }
-              >
-                <option value="">Blur (Ninguno)</option>
-                <option value="blur(4px)">Pequeño</option>
-                <option value="blur(8px)">Poco</option>
-                <option value="blur(12px)">Mediano</option>
-                <option value="blur(24px)">Grande</option>
-              </select>
-            </div>
-
-            <div className="w-full h-auto gap-3 border border-l-0 border-r-0 border-b-0 pt-3 border-[#4F4F4F]">
-              <h3
-                className="text-[#ffffff] text-sm font-medium mt-1"
-                style={{ fontFamily: "Inter, sans-serif" }}
-              >
-                Tamaños
-              </h3>
-            </div>
-
-            <div className="w-full h-auto grid grid-cols-2 gap-3">
-              <div className="gap-2 border border-[#555555] flex items-center h-10 rounded px-2 bg-[#555555]">
-                <h3 className="text-sm text-[#BDBDBD] font-semibold">W</h3>
-                <input
-                  className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                  value={selectedElement.styles.width}
-                  onChange={(e) => handleStyleChange("width", e.target.value)}
-                />
-              </div>
-              <div className="gap-2 border border-[#555555] flex items-center h-10 rounded px-2 bg-[#555555]">
-                <h3 className="text-sm text-[#BDBDBD] font-semibold">H</h3>
-                <input
-                  className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                  value={selectedElement.styles.height}
-                  onChange={(e) => handleStyleChange("height", e.target.value)}
-                />
-              </div>
-              <div className="gap-2 border border-[#555555] flex items-center h-10 rounded px-2 bg-[#555555]">
-                <h3 className="text-sm text-[#BDBDBD] font-semibold">MXW</h3>
-                <input
-                  className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                  value={selectedElement.styles.maxWidth}
-                  onChange={(e) =>
-                    handleStyleChange("maxWidth", e.target.value)
-                  }
-                />
-              </div>
-              <div className="gap-2 border border-[#555555] flex items-center h-10 rounded px-2 bg-[#555555]">
-                <h3 className="text-sm text-[#BDBDBD] font-semibold">MXH</h3>
-                <input
-                  className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                  value={selectedElement.styles.maxHeight}
-                  onChange={(e) =>
-                    handleStyleChange("maxHeight", e.target.value)
-                  }
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <h3 className="text-sm text-[#BDBDBD] font-semibold">Gap</h3>
-                <input
-                  className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2"
-                  value={selectedElement.styles.gap || ""}
-                  onChange={(e) => handleStyleChange("gap", e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="w-full h-auto gap-3 border border-l-0 border-r-0 border-b-0 pt-3 border-[#4F4F4F]">
-              <h3
-                className="text-[#ffffff] text-sm font-medium mt-1"
-                style={{ fontFamily: "Inter, sans-serif" }}
-              >
-                Posición
-              </h3>
-            </div>
-
-            <div
-              className={`w-full h-auto grid grid-cols-2 ${
-                selectedElement.styles.position === "absolute"
-                  ? "grid-rows-5"
-                  : "grid-rows-1"
-              }  gap-2`}
-            >
-              <div className="flex flex-col col-span-2">
-                <select
-                  className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2 outline-none"
-                  value={selectedElement.styles.position}
-                  onChange={(e) =>
-                    handleStyleChange("position", e.target.value)
-                  }
-                >
-                  <option value="">Ninguna</option>
-                  <option value="static">Estatica</option>
-                  <option value="absolute">Absoluta</option>
-                  <option value="relative">Relativa</option>
-                  <option value="fixed">Fixed</option>
-                </select>
-              </div>
-              {selectedElement.styles.position === "absolute" ||
-                (selectedElement.styles.position === "fixed" && (
-                  <>
-                    <div className="w-full grid grid-cols-2 gap-2 col-span-2 row-start-2 h-8">
-                      <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2">
-                        <MdBorderTop className="text-xl text-[#BDBDBD]" />
-                        <input
-                          className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                          value={selectedElement.styles.top}
-                          onChange={(e) =>
-                            handleStyleChange("top", e.target.value)
-                          }
-                        />
-                      </div>
-                      <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2">
-                        <MdOutlineBorderBottom className="text-xl text-[#BDBDBD]" />
-                        <input
-                          className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                          value={selectedElement.styles.bottom}
-                          onChange={(e) =>
-                            handleStyleChange("bottom", e.target.value)
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className="w-full grid grid-cols-2 gap-2 col-span-2 row-start-3 h-8">
-                      <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2">
-                        <MdBorderLeft className="text-xl text-[#BDBDBD]" />
-                        <input
-                          className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                          value={selectedElement.styles.left}
-                          onChange={(e) =>
-                            handleStyleChange("left", e.target.value)
-                          }
-                        />
-                      </div>
-                      <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2">
-                        <MdBorderRight className="text-xl text-[#BDBDBD]" />
-                        <input
-                          className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                          value={selectedElement.styles.right}
-                          onChange={(e) =>
-                            handleStyleChange("right", e.target.value)
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2 col-span-2 row-start-4">
-                      <BiLayer className="text-xl text-[#BDBDBD]" />
-                      <input
-                        className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                        value={selectedElement?.styles?.zIndex || ""}
-                        placeholder="Capa"
-                        onChange={(e) => {
-                          handleStyleChange("zIndex", e.target.value);
-                        }}
-                      />
-                    </div>
-                    <div
-                      className={`mt-2 text-base gap-2 text-[#C3C3C3] h-8 flex items-center justify-center rounded-md col-span-2 row-start-5 cursor-pointer bg-[#555555] ${
-                        selectedElement.styles.transform ===
-                        "translate(-50%, -50%)"
-                          ? "bg-[#2C2C2C] border-[2px] border-[#444444]"
-                          : ""
-                      }`}
-                      onClick={() =>
-                        handleStyleChange("transform", "translate(-50%, -50%)")
-                      }
-                    >
-                      <LuAlignCenterVertical className="text-xl text-[#C3C3C3]" />{" "}
-                      Centrar
-                    </div>
-                  </>
-                ))}
-            </div>
-
-            <div className="w-full h-auto gap-3 border border-l-0 border-r-0 border-b-0 pt-3 border-[#4F4F4F]">
-              <h3
-                className="text-[#ffffff] text-sm font-medium mt-1"
-                style={{ fontFamily: "Inter, sans-serif" }}
-              >
-                Margenes
-              </h3>
-            </div>
-
-            <div className="w-full h-auto grid grid-cols-2 grid-rows-3 gap-2">
-              <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2 col-span-2">
-                <RxBoxModel className="text-xl text-[#BDBDBD]" />
-                <input
-                  className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                  value={selectedElement?.styles?.margin || ""}
-                  placeholder="Margen global"
-                  onChange={(e) => {
-                    handleStyleChange("margin", e.target.value);
-                  }}
-                />
-              </div>
-              <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2">
-                <TbBoxAlignTopFilled className="text-xl text-[#BDBDBD]" />
-                <input
-                  className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                  value={selectedElement.styles.marginTop}
-                  onChange={(e) => {
-                    handleStyleChange("marginTop", e.target.value);
-                  }}
-                />
-              </div>
-              <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2">
-                <TbBoxAlignBottomFilled className="text-xl text-[#BDBDBD]" />
-                <input
-                  className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                  value={selectedElement.styles.marginBottom}
-                  onChange={(e) => {
-                    handleStyleChange("marginBottom", e.target.value);
-                  }}
-                />
-              </div>
-              <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2">
-                <TbBoxAlignLeftFilled className="text-xl text-[#BDBDBD]" />
-                <input
-                  className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                  value={selectedElement.styles.marginLeft}
-                  onChange={(e) => {
-                    handleStyleChange("marginLeft", e.target.value);
-                  }}
-                />
-              </div>
-              <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2">
-                <TbBoxAlignRightFilled className="text-xl text-[#BDBDBD]" />
-                <input
-                  className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                  value={selectedElement.styles.marginRight}
-                  onChange={(e) => {
-                    handleStyleChange("marginRight", e.target.value);
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="w-full h-auto gap-3 border border-l-0 border-r-0 border-b-0 pt-3 border-[#4F4F4F]">
-              <h3
-                className="text-[#ffffff] text-sm font-medium mt-1"
-                style={{ fontFamily: "Inter, sans-serif" }}
-              >
-                Paddings
-              </h3>
-            </div>
-            <div className="w-full h-auto grid grid-cols-2 grid-rows-3 gap-2">
-              <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2 col-span-2">
-                <RxBoxModel className="text-xl text-[#BDBDBD]" />
-                <input
-                  className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                  value={selectedElement?.styles?.padding || ""}
-                  placeholder="Padding global"
-                  onChange={(e) => {
-                    handleStyleChange("padding", e.target.value);
-                  }}
-                />
-              </div>
-              <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2">
-                <TbBoxAlignTopFilled className="text-xl text-[#BDBDBD]" />
-                <input
-                  className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                  value={selectedElement.styles.paddingTop}
-                  onChange={(e) =>
-                    handleStyleChange("paddingTop", e.target.value)
-                  }
-                />
-              </div>
-              <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2">
-                <TbBoxAlignBottomFilled className="text-xl text-[#BDBDBD]" />
-                <input
-                  className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                  value={selectedElement.styles.paddingBottom}
-                  onChange={(e) =>
-                    handleStyleChange("paddingBottom", e.target.value)
-                  }
-                />
-              </div>
-              <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2">
-                <TbBoxAlignLeftFilled className="text-xl text-[#BDBDBD]" />
-                <input
-                  className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                  value={selectedElement.styles.paddingLeft}
-                  onChange={(e) =>
-                    handleStyleChange("paddingLeft", e.target.value)
-                  }
-                />
-              </div>
-              <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2">
-                <TbBoxAlignRightFilled className="text-xl text-[#BDBDBD]" />
-                <input
-                  className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                  value={selectedElement.styles.paddingRight}
-                  onChange={(e) =>
-                    handleStyleChange("paddingRight", e.target.value)
-                  }
-                />
-              </div>
-            </div>
-            <div className="w-full h-auto gap-3 border border-l-0 border-r-0 border-b-0 pt-3 border-[#4F4F4F]">
-              <h3
-                className="text-[#ffffff] text-sm font-medium mt-1"
-                style={{ fontFamily: "Inter, sans-serif" }}
-              >
-                Bordes
-              </h3>
-            </div>
-            <div className="w-full h-auto grid grid-cols-2 grid-rows-7 gap-2 ">
-              <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2 col-span-2">
-                <RxBorderWidth className="text-xl text-[#BDBDBD]" />
-                <input
-                  type="text"
-                  className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                  value={selectedElement.styles.borderWidth}
-                  onChange={(e) =>
-                    handleStyleChange("borderWidth", e.target.value)
-                  }
-                />
-              </div>
-              <div className="gap-2 h-8 rounded mt-2 col-span-2 row-start-2">
-                <input
-                  type="color"
-                  className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] outline-none"
-                  value={selectedElement.styles.borderColor}
-                  onChange={(e) =>
-                    handleStyleChange("borderColor", e.target.value)
-                  }
-                />
-              </div>
-              <div className="mt-2 flex flex-col gap-2 col-span-2 h-8 row-start-3">
-                <select
-                  className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2 outline-none"
-                  value={selectedElement.styles.borderStyle}
-                  onChange={(e) =>
-                    handleStyleChange("borderStyle", e.target.value)
-                  }
-                >
-                  <option value="solid">Sólida</option>
-                  <option value="dashed">Rayas</option>
-                  <option value="dotted">Puntos</option>
-                  <option value="none">Ninguno</option>
-                </select>
-              </div>
-              <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 row-start-4 bg-[#555555] mt-2 col-span-2">
-                <RxBoxModel className="text-xl text-[#BDBDBD]" />
-                <input
-                  className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                  value={selectedElement?.styles?.borderRadius || ""}
-                  placeholder="Borde redondo global"
-                  onChange={(e) => {
-                    handleStyleChange("borderRadius", e.target.value);
-                  }}
-                />
-              </div>
-              <div className="w-full grid grid-cols-2 gap-2 col-span-2 row-start-5 h-8">
-                <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2">
-                  <TbBoxAlignTopLeftFilled className="text-xl text-[#BDBDBD]" />
-                  <input
-                    className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                    value={selectedElement.styles.borderTopLeftRadius}
-                    onChange={(e) =>
-                      handleStyleChange("borderTopLeftRadius", e.target.value)
-                    }
-                  />
-                </div>
-                <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2">
-                  <TbBoxAlignTopRightFilled className="text-xl text-[#BDBDBD]" />
-                  <input
-                    className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                    value={selectedElement.styles.borderTopRightRadius}
-                    onChange={(e) =>
-                      handleStyleChange("borderTopRightRadius", e.target.value)
-                    }
-                  />
-                </div>
-              </div>
-              <div className="w-full grid grid-cols-2 gap-2 col-span-2 row-start-6 h-8">
-                <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2">
-                  <TbBoxAlignBottomLeftFilled className="text-xl text-[#BDBDBD]" />
-                  <input
-                    className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                    value={selectedElement.styles.borderBottomLeftRadius}
-                    onChange={(e) =>
-                      handleStyleChange(
-                        "borderBottomLeftRadius",
-                        e.target.value
-                      )
-                    }
-                  />
-                </div>
-                <div className="gap-2 border border-[#555555] flex items-center h-8 rounded px-2 bg-[#555555] mt-2">
-                  <TbBoxAlignBottomRightFilled className="text-xl text-[#BDBDBD]" />
-                  <input
-                    className="w-full h-8 rounded bg-transparent text-[#E0E0E0] pl-1 outline-none"
-                    value={selectedElement.styles.borderBottomRightRadius}
-                    onChange={(e) =>
-                      handleStyleChange(
-                        "borderBottomRightRadius",
-                        e.target.value
-                      )
-                    }
-                  />
-                </div>
-              </div>
-              <div className="mt-2 flex flex-col gap-2 col-span-2 h-8 row-start-7">
-                <select
-                  className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2 outline-none"
-                  value={selectedElement.styles.boxShadow}
-                  onChange={(e) =>
-                    handleStyleChange("boxShadow", e.target.value)
-                  }
-                >
-                  <option value="">Sombra</option>
-                  <option value="none">Ninguna</option>
-                  <option value="0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24)">
-                    Sombra pequeña
-                  </option>
-                  <option value="0 3px 6px rgba(0, 0, 0, 0.16), 0 3px 6px rgba(0, 0, 0, 0.23)">
-                    Sombra mediana
-                  </option>
-                  <option value="0 10px 20px rgba(0, 0, 0, 0.19), 0 6px 6px rgba(0, 0, 0, 0.23)">
-                    Sombra grande
-                  </option>
-                  <option value="0 15px 25px rgba(0, 0, 0, 0.22), 0 10px 10px rgba(0, 0, 0, 0.2)">
-                    Sombra extra-grande
-                  </option>
-                </select>
-              </div>
-            </div>
-
-            <Accordion type="single" collapsible className="w-full">
-              <AccordionItem value="item-1">
-                <AccordionTrigger>Herramientas</AccordionTrigger>
-                <AccordionContent>
-                  <div className="w-full h-auto gap-3 border border-l-0 border-r-0 border-t-0 pb-3 border-[#4F4F4F]">
-                    <h3
-                      className="text-[#ffffff] text-sm font-medium mt-3"
-                      style={{ fontFamily: "Inter, sans-serif" }}
-                    >
-                      Copiar estilos
-                    </h3>
-                  </div>
-                  <div className="w-full h-auto">
-                    <h3
-                      className="text-[#ffffff] text-sm font-medium mt-1"
-                      style={{ fontFamily: "Inter, sans-serif" }}
-                    >
-                      Copiar estilos de
-                    </h3>
-                    <select
-                      value={selectedId || ""}
-                      onChange={(e) => {
-                        const sId = e.target.value || ""; // Si es undefined, poner ""
-                        console.log("Selected ID:", sId);
-                        setSelectedId(sId);
-                      }}
-                      className="text-[#E0E0E0] w-full h-8 rounded bg-[#555555] mt-2"
-                    >
-                      <option value="" disabled>
-                        Selecciona un elemento
-                      </option>
-                      {Array.isArray(droppedElements)
-                        ? renderOptions(droppedElements)
-                        : null}
-                    </select>
-
-                    <h3
-                      className="text-[#ffffff] text-sm font-medium mt-2"
-                      style={{ fontFamily: "Inter, sans-serif" }}
-                    >
-                      Aplicar estilos a
-                    </h3>
-                    <select
-                      value={targetId || ""}
-                      onChange={(e) => {
-                        const tId = e.target.value || ""; // Si es undefined, poner ""
-                        console.log("Target ID:", tId);
-                        setTargetId(tId);
-                      }}
-                      className="text-[#E0E0E0] w-full h-8 rounded bg-[#555555] mt-2"
-                    >
-                      <option value="" disabled>
-                        Selecciona un elemento
-                      </option>
-                      {Array.isArray(droppedElements)
-                        ? renderOptions(droppedElements)
-                        : null}
-                    </select>
-
-                    {/* Botón para aplicar estilos */}
+      {selectedElement.src && (
+        <Section title="Imagen" icon={LuLayoutGrid} defaultOpen>
+          {uploadedImages.length === 0 ? (
+            <p className="text-sm text-[#9A9AB8]">Aún no hay imágenes subidas a este proyecto.</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {uploadedImages
+                .filter((img) => typeof img === "string")
+                .map((image, i) => {
+                  const full = `${url}${image}`;
+                  const on = selectedElement.src === full;
+                  return (
                     <button
-                      onClick={applyStyles}
-                      className="w-full h-8 rounded text-[#E0E0E0] bg-[#555555] mt-3 flex items-center justify-center gap-2"
+                      key={i}
+                      type="button"
+                      onClick={() => handleSrcImgChange(full)}
+                      aria-pressed={on}
+                      className={`aspect-square rounded-xl overflow-hidden border-2 bg-[#25253B] ${on ? "border-[#7C6CFF]" : "border-transparent"}`}
                     >
-                      <MdOutlineStyle className="text-xl text-[#C3C3C3]" />
-                      Aplicar Estilos
+                      <img src={full} alt={image.split("/").pop()} loading="lazy" className="w-full h-full object-cover" />
                     </button>
-                  </div>
-                  <div className="mt-2 flex flex-col gap-2 col-span-2 h-8 row-start-3">
-                    <select
-                      className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2 outline-none"
-                      onChange={(e) => {
-                        const selectedStyleName = e.target.value;
-                        console.log(
-                          "🟢 Nombre del estilo seleccionado:",
-                          selectedStyleName
-                        );
+                  );
+                })}
+            </div>
+          )}
+        </Section>
+      )}
+    </>
+  );
 
-                        handleClassChange(selectedStyleName); // Actualizamos la clase en el estado
+  const tabEstilo = (
+    <>
+      <Section title="Tipografía" icon={LuPencil} defaultOpen>
+        <Field label="Fuente">
+          <Chips value={st.fontFamily} onChange={(v) => set("fontFamily", v)} options={FONTS} />
+        </Field>
+        <Field label="Grosor">
+          <Chips value={st.fontWeight} onChange={(v) => set("fontWeight", v)} options={WEIGHTS} />
+        </Field>
+        <Stepper label="Tamaño" value={st.fontSize} step={1} min={1} onChange={(v) => set("fontSize", v)} units={["px", "rem", "em"]} />
+        <Chips value={st.fontSize} onChange={(v) => set("fontSize", v)} options={FONT_SIZES} />
+        <Field label="Alineación">
+          <Seg
+            value={st.textAlign}
+            onChange={(v) => set("textAlign", v)}
+            options={[
+              { value: "left", label: "Izquierda", icon: LuAlignLeft },
+              { value: "center", label: "Centro", icon: LuAlignCenter },
+              { value: "right", label: "Derecha", icon: LuAlignRight },
+              { value: "justify", label: "Justificado", icon: LuAlignJustify },
+            ]}
+          />
+        </Field>
+        <Field label="Color del texto">
+          <ColorField value={st.color} onChange={(v) => set("color", v)} />
+        </Field>
+      </Section>
 
-                        console.log(
-                          "🔵 Lista de estilos después de handleClassChange:",
-                          gs
-                        );
+      <Section title="Relleno" icon={LuPalette}>
+        <FullColorPicker onChange={handleGradientChange} value={st.background} />
+        <Slider
+          label="Opacidad del fondo"
+          value={selectedElement.backgroundOpacity ?? OPACITY_SCALE}
+          min={0}
+          max={OPACITY_SCALE}
+          step={OPACITY_SCALE / 20}
+          onChange={(v) => set("backgroundOpacity", v)}
+        />
+        <Field label="Desenfoque del fondo" icon={CgDropOpacity}>
+          <Chips value={st.backdropFilter || ""} onChange={(v) => set("backdropFilter", v)} options={BLURS} />
+        </Field>
+      </Section>
 
-                        // Verificamos si el estilo está en gs antes de intentar aplicarlo
-                        const styleExists = gs.some(
-                          (style) => style.name === selectedStyleName
-                        );
-                        console.log(
-                          "🟠 ¿El estilo existe después de handleClassChange?",
-                          styleExists
-                        );
+      <Section title="Bordes" icon={RxBorderWidth}>
+        <Stepper icon={RxBorderWidth} label="Grosor" value={st.borderWidth} min={0} onChange={(v) => set("borderWidth", v)} />
+        <Field label="Color del borde">
+          <ColorField value={st.borderColor} onChange={(v) => set("borderColor", v)} />
+        </Field>
+        <Field label="Estilo">
+          <Chips value={st.borderStyle} onChange={(v) => set("borderStyle", v)} options={BORDER_STYLES} />
+        </Field>
+        <Stepper icon={RxBoxModel} label="Radio global" value={st.borderRadius} min={0} step={2} placeholder="0" onChange={(v) => set("borderRadius", v)} />
+        <Chips value={st.borderRadius} onChange={(v) => set("borderRadius", v)} options={["0", "4px", "8px", "16px", "9999px"]} />
+        <div className="grid grid-cols-2 gap-3">
+          {CORNERS.map(([prop, l, I]) => (
+            <Stepper key={prop} icon={I} label={l} value={st[prop]} min={0} step={2} onChange={(v) => set(prop, v)} />
+          ))}
+        </div>
+        <Field label="Sombra">
+          <Chips value={st.boxShadow || ""} onChange={(v) => set("boxShadow", v)} options={SHADOWS} />
+        </Field>
+      </Section>
+    </>
+  );
 
-                        if (!styleExists) {
-                          console.warn(
-                            `⚠️ El estilo global con nombre "${selectedStyleName}" no existe después de la actualización.`
-                          );
-                          return;
-                        }
-
-                        // Aplicamos los estilos globales solo si existe el estilo
-                        //applyGlobalStyles(selectedStyleName);
-                      }}
-                      value={selectedElement.iconClass || ""}
-                    >
-                      <option value="">Selecciona un estilo global</option>
-                      {gs.map((style) => (
-                        <option key={style.name} value={style.name}>
-                          {style.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="item-2">
-                <AccordionTrigger>Estilos avanzados</AccordionTrigger>
-                <AccordionContent>
-                  <div className="mt-2 flex flex-col gap-2 col-span-2 h-8">
-                    <select
-                      className="w-full h-8 rounded border border-[#828282] bg-transparent text-[#E0E0E0] pl-2 outline-none"
-                      value={selectedElement.styles.cursor}
-                      onChange={(e) =>
-                        handleStyleChange("cursor", e.target.value)
-                      }
-                    >
-                      <option value="">Cursor</option>
-                      <option value="pointer">Puntero</option>
-                    </select>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-              <AccordionItem value="item-3">
-                <AccordionTrigger>Is it animated?</AccordionTrigger>
-                <AccordionContent>
-                  Yes. It's animated by default, but you can disable it if you
-                  prefer.
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
+  const tabLayout = (
+    <>
+      <Section title="Disposición" icon={LuLayoutGrid} defaultOpen>
+        <Field label="Mostrar como">
+          <Chips value={st.display} onChange={(v) => set("display", v)} options={DISPLAYS} />
+        </Field>
+        {st.display === "flex" && (
+          <Field label="Dirección">
+            <Chips value={st.flexDirection} onChange={(v) => set("flexDirection", v)} options={DIRECTIONS} />
+          </Field>
+        )}
+        {isFlexOrGrid && (
+          <>
+            <Field label="Alinear elementos">
+              <Seg
+                value={st.alignItems}
+                onChange={(v) => set("alignItems", v)}
+                options={[
+                  { value: "start", label: "Inicio", icon: LuAlignStartHorizontal },
+                  { value: "center", label: "Centro", icon: LuAlignCenterHorizontal },
+                  { value: "end", label: "Final", icon: LuAlignEndHorizontal },
+                ]}
+              />
+            </Field>
+            <Field label="Distribuir">
+              <Seg
+                value={st.justifyContent}
+                onChange={(v) => set("justifyContent", v)}
+                options={[
+                  { value: "start", label: "Inicio", icon: LuAlignStartVertical },
+                  { value: "center", label: "Centro", icon: LuAlignCenterVertical },
+                  { value: "end", label: "Final", icon: LuAlignEndVertical },
+                  { value: "space-around", label: "Espacio alrededor", icon: LuAlignHorizontalSpaceAround },
+                  { value: "space-evenly", label: "Espacio uniforme", icon: RxSpaceEvenlyHorizontally },
+                  { value: "space-between", label: "Espacio entre", icon: LuAlignHorizontalSpaceBetween },
+                ]}
+              />
+            </Field>
           </>
         )}
-      </div>
+        {st.display === "grid" && (
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              ["gridTemplateColumns", "Columnas"],
+              ["gridTemplateRows", "Filas"],
+            ].map(([prop, l]) => (
+              <Stepper
+                key={prop}
+                unitless
+                min={1}
+                label={l}
+                placeholder="1"
+                value={getRowCount(st[prop])}
+                onChange={(v) => set(prop, v === "" ? "" : `repeat(${parseInt(v, 10) || 1}, 1fr)`)}
+              />
+            ))}
+          </div>
+        )}
+        <Toggle label="Ocultar lo que se sale" icon={BiSolidHide} checked={st.overflow === "hidden"} onChange={(on) => set("overflow", on ? "hidden" : "visible")} />
+      </Section>
+
+      <Section title="Tamaños" icon={RxBoxModel}>
+        <div className="grid grid-cols-2 gap-3">
+          <Stepper label="Ancho" value={st.width} step={10} min={0} onChange={(v) => set("width", v)} units={["px", "%", "rem", "vw"]} />
+          <Stepper label="Alto" value={st.height} step={10} min={0} onChange={(v) => set("height", v)} units={["px", "%", "rem", "vh"]} />
+          <Stepper label="Ancho máx." value={st.maxWidth} step={10} min={0} onChange={(v) => set("maxWidth", v)} units={["px", "%", "rem", "vw"]} />
+          <Stepper label="Alto máx." value={st.maxHeight} step={10} min={0} onChange={(v) => set("maxHeight", v)} units={["px", "%", "rem", "vh"]} />
+        </div>
+        <Field label="Ancho rápido">
+          <Chips value={st.width} onChange={(v) => set("width", v)} options={["auto", "100%", "75%", "50%", "25%", "fit-content"]} />
+        </Field>
+        <Stepper label="Separación (gap)" value={st.gap} step={4} min={0} placeholder="0" onChange={(v) => set("gap", v)} />
+      </Section>
+
+      <Section title="Posición" icon={BiLayer}>
+        <Chips value={st.position || ""} onChange={(v) => set("position", v)} options={POSITIONS} />
+        {isOffset && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <Stepper icon={MdBorderTop} label="Arriba" value={st.top} onChange={(v) => set("top", v)} units={["px", "%", "rem"]} />
+              <Stepper icon={MdOutlineBorderBottom} label="Abajo" value={st.bottom} onChange={(v) => set("bottom", v)} units={["px", "%", "rem"]} />
+              <Stepper icon={MdBorderLeft} label="Izquierda" value={st.left} onChange={(v) => set("left", v)} units={["px", "%", "rem"]} />
+              <Stepper icon={MdBorderRight} label="Derecha" value={st.right} onChange={(v) => set("right", v)} units={["px", "%", "rem"]} />
+            </div>
+            <Stepper unitless icon={BiLayer} label="Capa (z-index)" value={st.zIndex || ""} placeholder="0" onChange={(v) => set("zIndex", v)} />
+            <Toggle
+              label="Centrar"
+              icon={LuAlignCenterVertical}
+              checked={st.transform === "translate(-50%, -50%)"}
+              onChange={(on) => set("transform", on ? "translate(-50%, -50%)" : "none")}
+            />
+          </>
+        )}
+      </Section>
+
+      <Section title="Márgenes" icon={RxBoxModel}>
+        <SpacingBox prop="margin" st={st} onChange={set} globalLabel="Margen global" />
+      </Section>
+
+      <Section title="Paddings" icon={RxBoxModel}>
+        <SpacingBox prop="padding" st={st} onChange={set} globalLabel="Padding global" min={0} />
+      </Section>
+    </>
+  );
+
+  const tabExtras = (
+    <>
+      <Section title="Animación" icon={LuSparkles} defaultOpen>
+        <Chips value={selectedElement.animation || ""} onChange={handleAnimationChange} options={[{ value: "", label: "Ninguna" }]} />
+        {ANIMATIONS.map((g) => (
+          <Field key={g.group} label={g.group}>
+            <Chips
+              value={selectedElement.animation || ""}
+              onChange={handleAnimationChange}
+              options={g.items.map(([value, label]) => ({ value, label }))}
+            />
+          </Field>
+        ))}
+        {selectedElement.animation && (
+          <>
+            <Slider label="Duración" value={selectedElement.duracionanim} min={0} max={3000} step={100} suffix=" ms" onChange={handleDurAnimationChange} />
+            <Slider label="Retraso" value={selectedElement.retrasoanim} min={0} max={3000} step={100} suffix=" ms" onChange={handleRetAnimationChange} />
+          </>
+        )}
+      </Section>
+
+      <Section title="Herramientas" icon={MdOutlineStyle}>
+        <Field label="Estilo global">
+          <select
+            className={boxCls}
+            value={selectedElement.iconClass || ""}
+            onChange={(e) => {
+              const name = e.target.value;
+              handleClassChange(name);
+              if (!gs.some((style) => style.name === name)) return;
+            }}
+          >
+            <option value="">Selecciona un estilo global</option>
+            {gs.map((style) => (
+              <option key={style.name} value={style.name}>
+                {style.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Copiar estilos de">
+          <select className={boxCls} value={selectedId || ""} onChange={(e) => setSelectedId(e.target.value || "")}>
+            <option value="" disabled>
+              Selecciona un elemento
+            </option>
+            {Array.isArray(droppedElements) ? renderOptions(droppedElements) : null}
+          </select>
+        </Field>
+        <Field label="Aplicar estilos a">
+          <select className={boxCls} value={targetId || ""} onChange={(e) => setTargetId(e.target.value || "")}>
+            <option value="" disabled>
+              Selecciona un elemento
+            </option>
+            {Array.isArray(droppedElements) ? renderOptions(droppedElements) : null}
+          </select>
+        </Field>
+        <button
+          type="button"
+          onClick={applyStyles}
+          disabled={!selectedId || !targetId}
+          className="h-11 rounded-xl bg-[#7C6CFF] text-white font-semibold flex items-center justify-center gap-2 active:bg-[#6A5AEB] disabled:opacity-40 transition"
+        >
+          <MdOutlineStyle className="text-xl" />
+          Aplicar estilos
+        </button>
+      </Section>
+
+      <Section title="Avanzado" icon={LuSparkles}>
+        <Field label="Cursor">
+          <Chips
+            value={st.cursor || ""}
+            onChange={(v) => set("cursor", v)}
+            options={[
+              { value: "", label: "Predeterminado" },
+              { value: "pointer", label: "Puntero" },
+            ]}
+          />
+        </Field>
+      </Section>
+    </>
+  );
+
+  const content = { contenido: tabContenido, estilo: tabEstilo, layout: tabLayout, extras: tabExtras }[tab];
+
+  return (
+    <div className="right-panel w-full h-full col-span-1 bg-[#1F1F33] no-scroll overflow-y-auto scrollbar-hide font-[Inter,sans-serif]">
+      {/* Cabecera fija: elemento, página y pestañas siempre a mano */}
+      <header className="sticky top-0 z-20 bg-[#1F1F33]/95 backdrop-blur border-b border-[#38385A] px-3 pt-3">
+        <div className="flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-[#F2F2F7] text-base font-semibold truncate">{selectedElement.name || "Elemento"}</h2>
+            <p className="text-xs text-[#9A9AB8]">Id: {selectedElement.id}</p>
+          </div>
+          {pageSelect("!w-[45%] !min-h-10 !h-10 text-sm")}
+        </div>
+        <nav className="grid grid-cols-4 mt-2" role="tablist">
+          {TABS.map(({ id, label, icon: Icon }) => {
+            const on = tab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                onClick={() => setTab(id)}
+                className={`h-14 flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium border-b-2 transition ${
+                  on ? "text-white border-[#7C6CFF]" : "text-[#9A9AB8] border-transparent active:bg-[#2A2A43]"
+                }`}
+              >
+                <Icon className={`text-xl ${on ? "text-[#A89CFF]" : ""}`} />
+                {label}
+              </button>
+            );
+          })}
+        </nav>
+      </header>
+
+      <div className="p-3 pb-24 flex flex-col gap-3">{content}</div>
     </div>
   );
 };

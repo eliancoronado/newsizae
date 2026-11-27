@@ -39,6 +39,7 @@ import { auth } from "../firebase";
 import { toast } from "sonner";
 import { FaArrowLeft, FaArrowRight } from "react-icons/fa6";
 import { uploadToS3 } from "../utils/uploadToS3SDK"; // Ajusta la ruta según donde tengas el archivo
+import CanvasToolbar from "./CanvasToolBar";
 
 const CentralPanel = ({
   onUpdate,
@@ -64,7 +65,6 @@ const CentralPanel = ({
   const [scale, setScale] = useState(0.6);
   const [isDragging, setIsDragging] = useState(false);
   const [position, setPosition] = useState({ x: -383, y: -72 });
-  const [isHandTool, setIsHandTool] = useState(false);
   const [qrcode, setQrCode] = useState(false);
   const containerRef = useRef(null);
 
@@ -83,7 +83,11 @@ const CentralPanel = ({
     setBlockyCode,
     gs,
     setGs,
+    activeCanvasTool,
+    setCanvasTool,
   } = useStore();
+
+  const isHandTool = activeCanvasTool === "hand";
   // Agregar después de los otros useState
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportConfig, setExportConfig] = useState({
@@ -429,9 +433,6 @@ const CentralPanel = ({
     if (containerRef.current) containerRef.current.style.cursor = "default";
   };
 
-  const toggleHandTool = () => setIsHandTool(true);
-  const toggleMouseTool = () => setIsHandTool(false);
-
   return (
     <div
     id="menu"
@@ -440,24 +441,16 @@ const CentralPanel = ({
           ? "w-full h-screen max-h-screen min-h-screen overflow-hidden col-span-2 relative flex items-center justify-center"
           : "w-full h-screen max-h-screen min-h-screen overflow-hidden col-span-4 relative flex items-center justify-center"
       }
-      style={{ backgroundColor: backgroundColor }}
+      style={{       backgroundColor: "#16152A",
+          backgroundImage:
+            "radial-gradient(circle, rgba(255,217,102,0.05) 1px, transparent 1px)",
+          backgroundSize: "20px 20px", }}
       onMouseMove={handleMouseMove}
       onTouchMove={handleMove}
       onMouseUp={handleMouseUp}
       onTouchEnd={handleEnd}
       onMouseLeave={handleMouseUp}
     >
-      {/* Selector de color */}
-      <div className="absolute z-30 right-1 top-1 px-3 py-2 rounded flex items-center gap-2 bg-[#767676]">
-        <div className="w-5 h-5" style={{ backgroundColor: backgroundColor }} />
-        <input
-          type="text"
-          placeholder="Enter color (e.g., ff5733)"
-          className="pl-2 outline-none w-20 bg-transparent text-white"
-          value={color}
-          onChange={handleColorChange}
-        />
-      </div>
 
       {qrcode && (
         <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-40 rounded-xl shadow-lg w-full max-w-[900px]">
@@ -558,135 +551,27 @@ const CentralPanel = ({
       )}
 
       {/* Controles de escala y menú */}
-      <div className="absolute z-30 top-1 left-1 h-8 flex gap-1">
-        <button
-          onClick={decreaseScale}
-          className="bg-[#5A4A78] w-8 flex items-center justify-center text-[#FFD966] rounded shadow font-semibold"
-        >
-          -
-        </button>
-        <button
-          onClick={increaseScale}
-          className="bg-[#5A4A78] w-8 flex items-center justify-center text-[#FFD966] rounded shadow font-semibold"
-        >
-          +
-        </button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="bg-[#5A4A78] w-8 flex items-center justify-center text-[#FFD966] rounded shadow font-semibold">
-              <RxDotsVertical className="text-sm" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56">
-            <DropdownMenuGroup>
-              <DropdownMenuItem onClick={() => setModalOpen(true)}>
-                Nueva Página
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => {
-                  if (widthDevice === "1366px") {
-                    setWithDevice("430px");
-                    setPosition({ x: 83, y: -183 });
-                    setScale(0.8);
-                  } else {
-                    setWithDevice("1366px");
-                    setScale(0.6);
-                    setPosition({ x: -383, y: -72 });
-                  }
-                  if (heightDevice === "768px") {
-                    setHeightDevice("932px");
-                  } else {
-                    setHeightDevice("768px");
-                  }
-                  if (dpi === "0.6") {
-                    setDpi("0.33");
-                  } else {
-                    setDpi("0.7");
-                  }
-                }}
-              >
-                Modo {widthDevice === "1366px" ? "Telefono" : "Computadora"}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleSave}>Guardar</DropdownMenuItem>
-              <DropdownMenuItem onClick={handleCopy}>Copiar</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setQrCode(true)}>
-                Abrir link dev
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDeviceShow((prev) => !prev)}>
-                Abrir emulador
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handlePaste}>Pegar</DropdownMenuItem>
-              <Dialog>
-                <DialogTrigger asChild>
-                  <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                    Importar
-                  </DropdownMenuItem>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[425px]">
-                  <DialogHeader>
-                    <DialogTitle>Importar código</DialogTitle>
-                    <DialogDescription>
-                      Puedes importar código Obj para trabajar
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="import-code" className="text-right">
-                        Código en lenguaje Obj
-                      </Label>
-                      <Textarea
-                        id="import-code"
-                        value={importCode}
-                        className="col-span-3 max-h-[200px] text-black w-full p-2 border border-gray-300 rounded-md font-mono"
-                        placeholder="Ingresa el código Obj"
-                        onChange={(e) => setImportCode(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button
-                      onClick={() => {
-                        try {
-                          const parsedData = JSON.parse(importCode);
-                          if (Array.isArray(parsedData)) {
-                            setDroppedElements(parsedData);
-                          } else {
-                            setDroppedElements([parsedData]);
-                          }
-                          toast.success("Código importado correctamente");
-                        } catch (error) {
-                          toast.error("El JSON ingresado es inválido");
-                        }
-                      }}
-                    >
-                      Importar
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-              <DropdownMenuItem onClick={() => setIsExportModalOpen(true)}>
-                Exportar / Solicitar Apk
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      {/* Herramientas mano / puntero */}
-      <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex gap-2 z-10">
-        <button
-          onClick={toggleHandTool}
-          className={`p-1 ${isHandTool ? "bg-blue-500" : "bg-gray-500"} text-white rounded shadow hover:bg-blue-600 w-8 h-8`}
-        >
-          <Hand />
-        </button>
-        <button
-          onClick={toggleMouseTool}
-          className={`p-1 w-8 h-8 ${!isHandTool ? "bg-blue-500" : "bg-gray-500"} text-white rounded shadow hover:bg-blue-600`}
-        >
-          <MousePointer2 />
-        </button>
-      </div>
+      <CanvasToolbar
+  scale={scale}
+  decreaseScale={decreaseScale}
+  increaseScale={increaseScale}
+  setScale={setScale}
+  widthDevice={widthDevice}
+  setWithDevice={setWithDevice}
+  heightDevice={heightDevice}
+  setHeightDevice={setHeightDevice}
+  dpi={dpi}
+  setDpi={setDpi}
+  setPosition={setPosition}
+  setModalOpen={setModalOpen}
+  handleSave={handleSave}
+  handleCopy={handleCopy}
+  handlePaste={handlePaste}
+  setQrCode={setQrCode}
+  setDeviceShow={setDeviceShow}
+  setDroppedElements={setDroppedElements}
+  setIsExportModalOpen={setIsExportModalOpen}
+/>
 
       {/* Área de edición */}
       <div

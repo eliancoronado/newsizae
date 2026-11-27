@@ -45,6 +45,21 @@ const useStore = create((set) => ({
 
   draggingElement: null,
   setDraggingElement: (element) => set({ draggingElement: element }),
+
+  // Nuevo: herramienta activa del canvas
+  activeCanvasTool: "pointer", // "pointer" | "hand"
+
+  setCanvasTool: (tool) => set({ activeCanvasTool: tool }),
+
+  toggleHandTool: () =>
+    set({ activeCanvasTool: get().activeCanvasTool === "hand" ? "pointer" : "hand" }),
+
+  toggleMouseTool: () => set({ activeCanvasTool: "pointer" }),
+
+   // NUEVO: modo para el panel derecho (separado de mode)
+  rightPanelMode: "null", // "elements" | "capas" | "ia" | "files" | "GStyles" | "props"
+
+  setRightPanelMode: (m) => set({ rightPanelMode: m }),
 }));
 
 export default useStore;

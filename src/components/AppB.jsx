@@ -149,6 +149,8 @@ const AppBContent = ({ projectId }) => {
     setMode,
     selectedElement,
     setSelectedElement,
+    rightPanelMode,
+    setRightPanelMode,
   } = useStore();
 
   const [selectedGS, setSelectedGS] = useState(null);
@@ -380,6 +382,8 @@ const AppBContent = ({ projectId }) => {
           setBlockyCode(null);
           setWorkspaceState("");
         }
+
+        setRightPanelMode("null");
       } catch (error) {
         console.error("❌ Error al cargar el proyecto:", error);
         toast.error(`Error al cargar el proyecto: ${error.message}`);
@@ -747,10 +751,8 @@ const AppBContent = ({ projectId }) => {
             </Suspense>
           ) : (
             <div
-              className={`w-full h-full ${canEdit ? "grid grid-cols-4" : "flex justify-center items-center"}`}
+              className={`w-full h-full ${canEdit ? "grid grid-cols-1" : "flex justify-center items-center"}`}
             >
-              {canEdit && <LeftPanel prid={id} />}
-
               <CentralPanel
                 onUpdate={canEdit ? handlePreviewAndUpdate : undefined}
                 id={id}
@@ -763,22 +765,28 @@ const AppBContent = ({ projectId }) => {
                 canEdit={canEdit}
               />
 
-              {canEdit && (
-                <RightPanel
-                  handleStyleChange={handleStyleChange}
-                  handleTextChange={handleTextChange}
-                  handlePlaceholderChange={handlePlaceholderChange}
-                  handleClassChange={handleClassChange}
-                  handleTypeInputChange={handleTypeInputChange}
-                  handleSrcImgChange={handleSrcImgChange}
-                  handleValOptChange={handleValOptChange}
-                  handleHrefChange={handleHrefChange}
-                  handleAnimationChange={handleAnimationChange}
-                  handleDurAnimationChange={handleDurAnimationChange}
-                  handleRetAnimationChange={handleRetAnimationChange}
-                  prid={id}
-                  gs={gs}
-                />
+              {canEdit && rightPanelMode !== "null" && (
+                <div className="absolute top-4 right-3 bottom-4 padding-4 w-[25%] bg-[#1C1B2F] border-l border-white/10 shadow-2xl shadow-black/40 z-20 overflow-y-auto border rounded-lg">
+                  {rightPanelMode === "props" ? (
+                    <RightPanel
+                      handleStyleChange={handleStyleChange}
+                      handleTextChange={handleTextChange}
+                      handlePlaceholderChange={handlePlaceholderChange}
+                      handleClassChange={handleClassChange}
+                      handleTypeInputChange={handleTypeInputChange}
+                      handleSrcImgChange={handleSrcImgChange}
+                      handleValOptChange={handleValOptChange}
+                      handleHrefChange={handleHrefChange}
+                      handleAnimationChange={handleAnimationChange}
+                      handleDurAnimationChange={handleDurAnimationChange}
+                      handleRetAnimationChange={handleRetAnimationChange}
+                      prid={id}
+                      gs={gs}
+                    />
+                  ) : (
+                    <LeftPanel prid={id} activeTab={rightPanelMode} />
+                  )}
+                </div>
               )}
 
               {deviceShow && (

@@ -11,10 +11,11 @@ import { useNavigate } from "react-router-dom";
 const BottomBar = ({ activeTab, setActiveTab, totalUnread = 0, user }) => {
   const navigate = useNavigate();
   const navItems = [
-    { id: "home", icon: GoHomeFill, label: "Inicio" },
-    { id: "reels", icon: FaVideo, label: "Videos" },
+    //{ id: "home", icon: GoHomeFill, label: "Inicio" },
+    //{ id: "reels", icon: FaVideo, label: "Videos" },
     //{ id: "messages", icon: BiMessageDetail, label: "Mensajes" },
-    { id: "community", icon: FaUsers, label: "Comunidad" },
+    //{ id: "community", icon: FaUsers, label: "Comunidad" },
+    { id: "projects", icon: FaDiagramProject, label: "Proyectos" },
   ];
 
   return (

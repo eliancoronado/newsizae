@@ -187,7 +187,7 @@ export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [users, setUsers] = useState([]);
   const [friendsLoading, setFriendsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("home");
+  const [activeTab, setActiveTab] = useState("projects");
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const [storiesStatus, setStoriesStatus] = useState({});
